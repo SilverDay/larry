@@ -154,6 +154,53 @@ fn norm(s: &str) -> String {
 }
 
 /// The file as written: hash header + body.
+/// `plan --interactive`: ask about each site held back for a database decision. Per site: a number
+/// picks a candidate, `n` means no database, a name is taken as typed, empty or `s` leaves it held
+/// back. End of input leaves everything that is still open held back. Only plain names are accepted.
+pub fn ask_databases(records: &[Record], held: &[String], input: &mut dyn std::io::BufRead, out: &mut dyn std::io::Write) -> Result<Answers, String> {
+    let mut answers = Answers::new();
+    let io = |e: std::io::Error| e.to_string();
+    for domain in held {
+        let Some(rec) = records.iter().find(|r| &r.domain == domain) else { continue };
+        let names: Vec<(&String, &Vec<String>)> = rec.db.candidates.iter().collect();
+        writeln!(out, "\n{domain}: {}", rec.db.note).map_err(io)?;
+        for (i, (n, refs)) in names.iter().enumerate() {
+            writeln!(out, "  {}) {n}   ({})", i + 1, refs.iter().take(2).cloned().collect::<Vec<_>>().join(", ")).map_err(io)?;
+        }
+        loop {
+            write!(out, "  number, database name, n = no database, s = skip for now: ").map_err(io)?;
+            out.flush().map_err(io)?;
+            let mut line = String::new();
+            if input.read_line(&mut line).map_err(io)? == 0 {
+                writeln!(out).map_err(io)?;
+                return Ok(answers);
+            }
+            let a = line.trim();
+            let choice = match a {
+                "" | "s" | "S" => break,
+                "n" | "N" => Some(None),
+                _ => match a.parse::<usize>() {
+                    Ok(i) if (1..=names.len()).contains(&i) => Some(Some(names[i - 1].0.clone())),
+                    Ok(_) => {
+                        writeln!(out, "  no such number").map_err(io)?;
+                        continue;
+                    }
+                    Err(_) if is_db_name(a) => Some(Some(a.to_string())),
+                    Err(_) => {
+                        writeln!(out, "  '{a}' is not a plain database name").map_err(io)?;
+                        continue;
+                    }
+                },
+            };
+            if let Some(c) = choice {
+                answers.insert(domain.clone(), c);
+            }
+            break;
+        }
+    }
+    Ok(answers)
+}
+
 pub fn render(body: &str) -> String {
     format!("{HEADER}{}\n{body}", sha(&norm(body)))
 }
@@ -287,6 +334,31 @@ default = true
         r.docroot_name = Some("httpdocs".into());
         r.db = DbInfo { status, name: db.map(String::from), source: None, verified: true, note: "note".into(), candidates: Default::default() };
         r
+    }
+
+    #[test]
+    fn interactive_answers_pick_type_skip_and_reject() {
+        let mut a = rec("a.example.org", DbStatus::Unresolved, None);
+        a.db.candidates.insert("a_db".into(), vec!["wp-config.php:3".into()]);
+        a.db.candidates.insert("b_db".into(), vec![".env:1".into()]);
+        let b = rec("b.example.org", DbStatus::Unresolved, None);
+        let c = rec("c.example.org", DbStatus::Unresolved, None);
+        let d = rec("d.example.org", DbStatus::Unresolved, None);
+        let recs = vec![a, b, c, d];
+        let held: Vec<String> = recs.iter().map(|r| r.domain.clone()).collect();
+        // a: bad number, then 2; b: bad name, then n; c: skip; d: typed name
+        let mut input = std::io::Cursor::new("9\n2\nx y\nn\ns\ntyped_db\n");
+        let mut out = vec![];
+        let ans = ask_databases(&recs, &held, &mut input, &mut out).unwrap();
+        assert_eq!(ans.get("a.example.org"), Some(&Some("b_db".to_string())));
+        assert_eq!(ans.get("b.example.org"), Some(&None));
+        assert!(!ans.contains_key("c.example.org"));
+        assert_eq!(ans.get("d.example.org"), Some(&Some("typed_db".to_string())));
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("no such number") && text.contains("not a plain database name") && text.contains("1) a_db"));
+        // end of input leaves the rest held back
+        let ans = ask_databases(&recs, &held, &mut std::io::Cursor::new("1\n"), &mut vec![]).unwrap();
+        assert_eq!(ans.len(), 1);
     }
 
     #[test]

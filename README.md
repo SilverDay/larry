@@ -10,7 +10,7 @@ The scripts it replaces are kept in [reference/](reference/) as the behavioural 
 | `config check` | done |
 | `init` | done (wizard, host-key pinning, ssh config, sshd/authorized_keys snippets) |
 | `discover` | done (vhosts, nested roots, databases, PHP settings, old paths, cron, non-InnoDB tables, DEFINER accounts, how the site sends mail) |
-| `plan` | done (`--interactive` not yet; use `--db DOMAIN=NAME`) |
+| `plan` | done (`--interactive` asks about held-back databases; `--db DOMAIN=NAME` for scripts) |
 | `preflight` / `target preflight` | done (tools, secrets, host keys, database access, reachability, PHP-FPM versions, free space; the source hands the plan's facts to each target, where name and ownership conflicts, collations and existing databases are checked) |
 | `target sshd` | done (print, or `--apply` with backup, `sshd -t` and effective-config check) |
 | `sync` | done (files, certificates, manifest, database dump; `--mirror`, `--resume`, `--dry-run`) |

@@ -38,6 +38,9 @@ enum Command {
         /// Decide a database by hand: DOMAIN=NAME, or DOMAIN= for "no database"
         #[arg(long = "db", value_name = "DOMAIN=NAME")]
         db: Vec<String>,
+        /// Ask about each site held back for a database decision and record the answers in sites.toml
+        #[arg(long)]
+        interactive: bool,
     },
     /// Check tools, secret files, pinned host keys, database access and reachability
     Preflight,
@@ -318,7 +321,7 @@ fn run(cli: &Cli) -> Result<u8, String> {
             println!("\nwrote {} record(s) to {}", records.len(), out.display());
             Ok(larry_discover::exit_code(&records) as u8)
         }
-        Command::Plan { db } => {
+        Command::Plan { db, interactive } => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
             let dir = dir_of(&cli.config);
             let records = larry_discover::read_inventory(&dir.join("inventory.jsonl"))?;
@@ -327,7 +330,13 @@ fn run(cli: &Cli) -> Result<u8, String> {
                 let (d, n) = a.split_once('=').ok_or_else(|| format!("--db expects DOMAIN=NAME, got '{a}'"))?;
                 answers.insert(d.trim().into(), (!n.trim().is_empty()).then(|| n.trim().to_string()));
             }
-            let plan = larry_plan::build(&records, &cfg, &answers)?;
+            let mut plan = larry_plan::build(&records, &cfg, &answers)?;
+            if *interactive && !plan.held_back.is_empty() {
+                let held: Vec<String> = plan.held_back.iter().map(|(d, _)| d.clone()).collect();
+                let more = larry_plan::ask_databases(&records, &held, &mut std::io::stdin().lock(), &mut std::io::stdout())?;
+                answers.extend(more);
+                plan = larry_plan::build(&records, &cfg, &answers)?;
+            }
             let sites = dir.join("sites.toml");
             let written = larry_plan::write_plan(&sites, &plan)?;
             print!("{}", larry_plan::summary(&plan));
