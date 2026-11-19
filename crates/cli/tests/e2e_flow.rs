@@ -96,23 +96,22 @@ fn sync_then_apply_end_to_end() {
     }
     let hostpub = std::fs::read_to_string(d.join("hostkey.pub")).unwrap();
     let fp = ssh::fingerprint(&hostpub).unwrap();
-    let pinned = ssh::pin("127.0.0.1", &format!("127.0.0.1 {}", hostpub.trim()), &fp).unwrap();
-    let (t, b) = ssh::parse_key(&pinned).unwrap();
-    std::fs::write(d.join("known_hosts"), format!("[127.0.0.1]:{port} {t} {b}\n")).unwrap();
+    let pinned = ssh::pin("127.0.0.1", Some(port), &format!("127.0.0.1 {}", hostpub.trim()), &fp).unwrap();
+    std::fs::write(d.join("known_hosts"), format!("{pinned}\n")).unwrap();
     let identity = d.join("id_ed25519").display().to_string();
     let generated = ssh::ssh_config(
-        &[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity }],
+        &[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity, port: Some(port) }],
         &d.join("known_hosts").display().to_string(),
         &d.display().to_string(),
     )
     .unwrap();
-    std::fs::write(d.join("ssh_config"), format!("Host larry-web1\n    Port {port}\n\n{generated}")).unwrap();
+    std::fs::write(d.join("ssh_config"), generated).unwrap();
 
     // config, inventory, plan
     std::fs::write(
         d.join("migration.toml"),
         format!(
-            "version = 1\n[source]\ndb_defaults_file = \"/nonexistent\"\nstaging_dir = \"{0}/stage\"\n[ssh]\nconfig_file = \"{0}/ssh_config\"\nknown_hosts = \"{0}/known_hosts\"\n[targets.web1]\nhost = \"127.0.0.1\"\nhost_key = \"{fp}\"\ntransfer_user = \"{me}\"\nincoming_dir = \"{0}/incoming\"\ndefault = true\n[layout]\nvhost_base = \"{0}/vhosts\"\n",
+            "version = 1\n[source]\ndb_defaults_file = \"/nonexistent\"\nstaging_dir = \"{0}/stage\"\n[ssh]\nconfig_file = \"{0}/ssh_config\"\nknown_hosts = \"{0}/known_hosts\"\n[targets.web1]\nhost = \"127.0.0.1\"\nport = {port}\nhost_key = \"{fp}\"\ntransfer_user = \"{me}\"\nincoming_dir = \"{0}/incoming\"\ndefault = true\n[layout]\nvhost_base = \"{0}/vhosts\"\n",
             d.display()
         ),
     )

@@ -87,6 +87,8 @@ pub struct Target {
     pub host_key: String,
     pub transfer_user: String,
     pub incoming_dir: String,
+    /// SSH port of the target; the default is 22.
+    pub port: Option<u16>,
     #[serde(default)]
     pub default: bool,
 }
@@ -203,6 +205,9 @@ impl MigrationConfig {
         for (name, t) in &self.targets {
             if !is_alias(name) {
                 return Err(Error::Invalid(format!("migration.toml: bad target name '{name}'")));
+            }
+            if t.port == Some(0) {
+                return Err(Error::Invalid(format!("migration.toml: target '{name}' has port 0")));
             }
             if !t.host_key.starts_with("SHA256:") || t.host_key == "SHA256:..." {
                 return Err(Error::Invalid(format!("migration.toml: target '{name}' needs a real host_key (SHA256:...)")));

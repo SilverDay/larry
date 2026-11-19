@@ -79,6 +79,7 @@ config_file = "$D/ssh_config"
 known_hosts = "$D/known_hosts"
 [targets.web1]
 host = "127.0.0.1"
+port = 2222
 host_key = "$FP"
 transfer_user = "migrate"
 incoming_dir = "$IN"

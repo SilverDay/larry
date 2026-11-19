@@ -7,9 +7,12 @@ use larry_transport::ssh;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+/// Read a host's public key at (address, port).
+pub type ScanFn<'a> = dyn Fn(&str, Option<u16>) -> Result<String, String> + 'a;
+
 pub struct Deps<'a> {
     /// Read a host's public key (ssh-keyscan in real use).
-    pub scan: &'a dyn Fn(&str) -> Result<String, String>,
+    pub scan: &'a ScanFn<'a>,
     /// Create an ed25519 key pair at the path; returns the public key line.
     pub gen_key: &'a dyn Fn(&Path) -> Result<String, String>,
 }
@@ -18,6 +21,7 @@ struct Target {
     name: String,
     host: String,
     address: String,
+    port: Option<u16>,
     user: String,
     incoming: String,
     fingerprint: String,
@@ -83,17 +87,20 @@ pub fn run(dir: &Path, input: &mut dyn BufRead, out: &mut dyn Write, deps: &Deps
         }
         let host = p.ask("  host name", None)?;
         let address = p.ask("  IP address to connect to", Some(&host))?;
+        let port_text = p.ask("  SSH port", Some("22"))?;
+        let port: u16 = port_text.parse().ok().filter(|p| *p != 0).ok_or_else(|| format!("'{port_text}' is not a port number"))?;
+        let port = (port != 22).then_some(port);
         let user = p.ask("  transfer account on the target", Some("migrate"))?;
         let incoming = p.ask("  drop directory on the target", Some("/srv/migration-incoming"))?;
 
-        let key = (deps.scan)(&address).map_err(|e| format!("{address}: {e}"))?;
+        let key = (deps.scan)(&address, port).map_err(|e| format!("{address}: {e}"))?;
         let fp = ssh::fingerprint(&key)?;
         p.say(&format!("  The host key offered by {address} has the fingerprint:\n      {fp}"));
         p.say("  Compare it with the one printed on the target's console, not over this connection:");
         p.say("      ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub");
         let typed = p.ask("  type the fingerprint from the console to pin this key", None)?;
-        let line = ssh::pin(&address, &key, &typed).map_err(|e| format!("target '{name}': {e}"))?;
-        targets.push(Target { name, host, address, user, incoming, fingerprint: fp, known_hosts_line: line });
+        let line = ssh::pin(&address, port, &key, &typed).map_err(|e| format!("target '{name}': {e}"))?;
+        targets.push(Target { name, host, address, port, user, incoming, fingerprint: fp, known_hosts_line: line });
     }
     if targets.is_empty() {
         return Err("no targets given; nothing was written".into());
@@ -110,7 +117,7 @@ pub fn run(dir: &Path, input: &mut dyn BufRead, out: &mut dyn Write, deps: &Deps
 
     let identity = key_path.display().to_string();
     let ssh_targets: Vec<ssh::TargetSsh> =
-        targets.iter().map(|t| ssh::TargetSsh { name: &t.name, address: &t.address, user: &t.user, identity_file: &identity }).collect();
+        targets.iter().map(|t| ssh::TargetSsh { name: &t.name, address: &t.address, user: &t.user, identity_file: &identity, port: t.port }).collect();
     // ssh refuses ControlPath sockets of 108+ bytes: keep them next to the config when that is short
     // enough, otherwise in a private directory under /tmp (sockets are ephemeral).
     let control_dir = if dir.display().to_string().len() <= ssh::MAX_CONTROL_DIR {
@@ -128,8 +135,8 @@ pub fn run(dir: &Path, input: &mut dyn BufRead, out: &mut dyn Write, deps: &Deps
     toml += &format!("[ssh]\nconfig_file = {}\nknown_hosts = {}\n", q(&d("ssh_config")), q(&d("known_hosts")));
     for (i, t) in targets.iter().enumerate() {
         toml += &format!(
-            "\n[targets.{}]\nhost          = {}\naddress       = {}\nhost_key      = {}   # confirmed against the target's console\ntransfer_user = {}\nincoming_dir  = {}\n",
-            t.name, q(&t.host), q(&t.address), q(&t.fingerprint), q(&t.user), q(&t.incoming)
+            "\n[targets.{}]\nhost          = {}\naddress       = {}\n{}host_key      = {}   # confirmed against the target's console\ntransfer_user = {}\nincoming_dir  = {}\n",
+            t.name, q(&t.host), q(&t.address), t.port.map(|p| format!("port          = {p}\n")).unwrap_or_default(), q(&t.fingerprint), q(&t.user), q(&t.incoming)
         );
         if i == 0 {
             toml += "default       = true\n";
@@ -192,8 +199,8 @@ mod tests {
         let d = tmp("ok");
         let key = host_key(&d);
         let fp = ssh::fingerprint(&key).unwrap();
-        let script = format!("\n\n192.0.2.1\nweb1\nweb1.example.net\n192.0.2.10\n\n\n{fp}\n\n");
-        let scan = |_: &str| Ok(format!("192.0.2.10 {key}"));
+        let script = format!("\n\n192.0.2.1\nweb1\nweb1.example.net\n192.0.2.10\n\n\n\n{fp}\n\n");
+        let scan = |_: &str, _: Option<u16>| Ok(format!("192.0.2.10 {key}"));
         let mut out = Vec::new();
         run(&d.join("conf"), &mut Cursor::new(script), &mut out, &Deps { scan: &scan, gen_key: &gen }).unwrap();
 
@@ -220,11 +227,33 @@ mod tests {
     }
 
     #[test]
+    fn a_non_default_port_is_scanned_pinned_and_configured() {
+        let d = tmp("port");
+        let key = host_key(&d);
+        let fp = ssh::fingerprint(&key).unwrap();
+        let script = format!("\n\n192.0.2.1\nweb1\nweb1.example.net\n192.0.2.10\n2222\n\n\n{fp}\n\n");
+        let seen = std::cell::Cell::new(None);
+        let scan = |_: &str, p: Option<u16>| {
+            seen.set(p);
+            Ok(format!("[192.0.2.10]:2222 {key}"))
+        };
+        run(&d.join("conf"), &mut Cursor::new(script), &mut Vec::new(), &Deps { scan: &scan, gen_key: &gen }).unwrap();
+        assert_eq!(seen.get(), Some(2222));
+        let conf = d.join("conf");
+        assert_eq!(larry_config::MigrationConfig::load(&conf.join("migration.toml")).unwrap().targets["web1"].port, Some(2222));
+        assert!(std::fs::read_to_string(conf.join("known_hosts")).unwrap().starts_with("[192.0.2.10]:2222 ssh-ed25519 "));
+        assert!(std::fs::read_to_string(conf.join("ssh_config")).unwrap().contains("    Port 2222\n"));
+        let bad = run(&d.join("conf2"), &mut Cursor::new("\n\n192.0.2.1\nweb1\nh\n192.0.2.10\nssh\n"), &mut Vec::new(), &Deps { scan: &scan, gen_key: &gen });
+        assert!(bad.unwrap_err().contains("not a port number"));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn a_wrong_fingerprint_pins_nothing_and_writes_nothing() {
         let d = tmp("bad");
         let key = host_key(&d);
-        let script = "\n\n192.0.2.1\nweb1\nweb1.example.net\n192.0.2.10\n\n\nSHA256:attackerscontrolledfingerprint\n";
-        let scan = |_: &str| Ok(format!("192.0.2.10 {key}"));
+        let script = "\n\n192.0.2.1\nweb1\nweb1.example.net\n192.0.2.10\n\n\n\nSHA256:attackerscontrolledfingerprint\n";
+        let scan = |_: &str, _: Option<u16>| Ok(format!("192.0.2.10 {key}"));
         let err = run(&d.join("conf"), &mut Cursor::new(script), &mut Vec::new(), &Deps { scan: &scan, gen_key: &gen }).unwrap_err();
         assert!(err.contains("does not match"), "{err}");
         assert!(!d.join("conf/migration.toml").exists() && !d.join("conf/known_hosts").exists());

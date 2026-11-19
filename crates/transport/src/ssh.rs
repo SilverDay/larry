@@ -39,6 +39,16 @@ pub struct TargetSsh<'a> {
     pub address: &'a str,
     pub user: &'a str,
     pub identity_file: &'a str,
+    /// `None` is the default port 22.
+    pub port: Option<u16>,
+}
+
+/// How known_hosts names a host: the plain address on port 22, `[address]:port` otherwise.
+pub fn known_hosts_name(address: &str, port: Option<u16>) -> String {
+    match port {
+        None | Some(22) => address.to_string(),
+        Some(p) => format!("[{address}]:{p}"),
+    }
 }
 
 /// OpenSSH refuses socket paths of 108 bytes or more, and while connecting it appends a 17-byte
@@ -62,8 +72,12 @@ pub fn ssh_config(targets: &[TargetSsh], known_hosts: &str, control_dir: &str) -
         plain("address", t.address)?;
         name_ok("transfer user", t.user)?;
         abs_path("identity file", t.identity_file)?;
+        if t.port == Some(0) {
+            return Err(format!("target '{}': port 0 is not a port", t.name));
+        }
+        let port = t.port.filter(|p| *p != 22).map(|p| format!("    Port {p}\n")).unwrap_or_default();
         out += &format!(
-            "\nHost {}\n    HostName {}\n    User {}\n    IdentityFile {}\n    IdentitiesOnly yes\n    StrictHostKeyChecking yes\n    UserKnownHostsFile {}\n    ControlMaster auto\n    ControlPath {}/cm-%C\n    ControlPersist 10m\n",
+            "\nHost {}\n    HostName {}\n{port}    User {}\n    IdentityFile {}\n    IdentitiesOnly yes\n    StrictHostKeyChecking yes\n    UserKnownHostsFile {}\n    ControlMaster auto\n    ControlPath {}/cm-%C\n    ControlPersist 10m\n",
             alias(t.name),
             t.address,
             t.user,
@@ -98,21 +112,26 @@ pub fn fingerprint(key_line: &str) -> Result<String, String> {
 
 /// Read a target's host key with `ssh-keyscan`. The result is only a candidate: the admin must
 /// compare its fingerprint with the one shown on the target's console before it is pinned.
-pub fn scan_host_key(address: &str) -> Result<String, String> {
+pub fn scan_host_key(address: &str, port: Option<u16>) -> Result<String, String> {
     plain("address", address)?;
-    let out = Cmd::new("ssh-keyscan").args(["-t", "ed25519", "-T", "10"]).arg(address).run_checked().map_err(|e| e.to_string())?;
+    let out = Cmd::new("ssh-keyscan")
+        .args(["-t", "ed25519", "-T", "10", "-p"])
+        .arg(port.unwrap_or(22).to_string())
+        .arg(address)
+        .run_checked()
+        .map_err(|e| e.to_string())?;
     out.stdout.lines().find(|l| !l.trim().is_empty() && !l.starts_with('#')).map(String::from).ok_or_else(|| format!("{address}: no ed25519 host key offered"))
 }
 
 /// The known_hosts line, but only if the key's fingerprint is the one the admin confirmed.
-pub fn pin(address: &str, scanned_key: &str, confirmed_fingerprint: &str) -> Result<String, String> {
+pub fn pin(address: &str, port: Option<u16>, scanned_key: &str, confirmed_fingerprint: &str) -> Result<String, String> {
     plain("address", address)?;
     let actual = fingerprint(scanned_key)?;
     if actual != confirmed_fingerprint.trim() {
         return Err(format!("host key fingerprint {actual} does not match the confirmed {}: not pinned", confirmed_fingerprint.trim()));
     }
     let (t, b) = parse_key(scanned_key)?;
-    Ok(format!("{address} {t} {b}"))
+    Ok(format!("{} {t} {b}", known_hosts_name(address, port)))
 }
 
 /// `authorized_keys` line for the transfer account: no shell, no forwarding, source address only,
@@ -303,8 +322,24 @@ mod tests {
     }
 
     #[test]
+    fn non_default_ports_reach_ssh_config_and_known_hosts() {
+        let mk = |port| [TargetSsh { name: "web1", address: "192.0.2.10", user: "migrate", identity_file: "/i", port }];
+        assert!(!ssh_config(&mk(None), "/k", "/c").unwrap().contains("Port "));
+        assert!(!ssh_config(&mk(Some(22)), "/k", "/c").unwrap().contains("Port "));
+        assert!(ssh_config(&mk(Some(2222)), "/k", "/c").unwrap().contains("HostName 192.0.2.10\n    Port 2222\n"));
+        assert!(ssh_config(&mk(Some(0)), "/k", "/c").is_err());
+        assert_eq!(known_hosts_name("192.0.2.10", None), "192.0.2.10");
+        assert_eq!(known_hosts_name("192.0.2.10", Some(2222)), "[192.0.2.10]:2222");
+        let d = tmp("port");
+        let (_, pubkey) = keypair(&d, "k");
+        let fp = fingerprint(&pubkey).unwrap();
+        assert!(pin("192.0.2.10", Some(2222), &pubkey, &fp).unwrap().starts_with("[192.0.2.10]:2222 ssh-ed25519 "));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
     fn ssh_config_is_strict_and_absolute() {
-        let t = [TargetSsh { name: "web1", address: "192.0.2.10", user: "migrate", identity_file: "/root/larry/id_ed25519" }];
+        let t = [TargetSsh { name: "web1", address: "192.0.2.10", user: "migrate", identity_file: "/root/larry/id_ed25519", port: None }];
         let c = ssh_config(&t, "/root/larry/known_hosts", "/root/larry/").unwrap();
         for want in [
             "Host larry-web1",
@@ -322,7 +357,7 @@ mod tests {
         let long = format!("/{}", "d".repeat(MAX_CONTROL_DIR));
         assert!(ssh_config(&t, "/k", &long).unwrap_err().contains("too long"), "a ControlPath over 108 bytes breaks ssh and rsync");
         assert!(ssh_config(&t, "/k", &long[..MAX_CONTROL_DIR]).is_ok());
-        let bad = [TargetSsh { name: "web1", address: "h\nProxyCommand evil", user: "m", identity_file: "/i" }];
+        let bad = [TargetSsh { name: "web1", address: "h\nProxyCommand evil", user: "m", identity_file: "/i", port: None }];
         assert!(ssh_config(&bad, "/k", "/c").is_err(), "no option injection through values");
     }
 
@@ -334,12 +369,12 @@ mod tests {
         assert!(fp.starts_with("SHA256:"));
         let scanned = format!("192.0.2.10 {}", pubkey.trim());
         assert_eq!(fingerprint(&scanned).unwrap(), fp, "leading host field is ignored");
-        let line = pin("192.0.2.10", &scanned, &fp).unwrap();
+        let line = pin("192.0.2.10", None, &scanned, &fp).unwrap();
         assert!(line.starts_with("192.0.2.10 ssh-ed25519 "));
         let (_, other) = keypair(&d, "evil");
-        let err = pin("192.0.2.10", &format!("192.0.2.10 {}", other.trim()), &fp).unwrap_err();
+        let err = pin("192.0.2.10", None, &format!("192.0.2.10 {}", other.trim()), &fp).unwrap_err();
         assert!(err.contains("does not match"), "{err}");
-        assert!(pin("192.0.2.10", "garbage", &fp).is_err());
+        assert!(pin("192.0.2.10", None, "garbage", &fp).is_err());
         std::fs::remove_dir_all(&d).unwrap();
     }
 

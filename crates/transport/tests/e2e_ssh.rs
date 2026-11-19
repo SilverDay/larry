@@ -82,20 +82,19 @@ fn push_probe_and_refusals_through_a_real_sshd() {
     // pin the host key the way init does (fingerprint confirmed, then written to known_hosts)
     let hostpub = std::fs::read_to_string(d.join("hostkey.pub")).unwrap();
     let fp = ssh::fingerprint(&hostpub).unwrap();
-    let pinned = ssh::pin("127.0.0.1", &format!("127.0.0.1 {}", hostpub.trim()), &fp).unwrap();
-    let (t, b) = ssh::parse_key(&pinned).unwrap();
-    std::fs::write(d.join("known_hosts"), format!("[127.0.0.1]:{port} {t} {b}\n")).unwrap(); // non-default port form
+    let pinned = ssh::pin("127.0.0.1", Some(port), &format!("127.0.0.1 {}", hostpub.trim()), &fp).unwrap();
+    assert!(pinned.starts_with(&format!("[127.0.0.1]:{port} ")), "non-default port form: {pinned}");
+    std::fs::write(d.join("known_hosts"), format!("{pinned}\n")).unwrap();
 
     let identity = d.join("id_ed25519").display().to_string();
     let generated = ssh::ssh_config(
-        &[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity }],
+        &[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity, port: Some(port) }],
         &d.join("known_hosts").display().to_string(),
         &d.display().to_string(),
     )
     .unwrap();
-    // only the port is added; ssh uses the first value it obtains, so it goes in front
     let cfg_path = d.join("ssh_config");
-    std::fs::write(&cfg_path, format!("Host larry-web1\n    Port {port}\n\n{generated}")).unwrap();
+    std::fs::write(&cfg_path, generated).unwrap();
     let cfg = cfg_path.display().to_string();
 
     // push a dump and its checksum into the drop directory, then verify there

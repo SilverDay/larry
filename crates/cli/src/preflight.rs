@@ -106,8 +106,9 @@ pub fn source(cfg: &MigrationConfig, dir: &Path) -> Report {
     for (name, t) in &cfg.targets {
         let addr = t.address.as_deref().unwrap_or(&t.host);
         // the pinned key must be the one `migration.toml` says the admin confirmed
-        match known.lines().find(|l| l.split_whitespace().next() == Some(addr)) {
-            None => r.fail(&format!("host key {name}"), &format!("no pinned key for {addr} in {}", cfg.ssh.known_hosts)),
+        let known_name = ssh::known_hosts_name(addr, t.port);
+        match known.lines().find(|l| l.split_whitespace().next() == Some(known_name.as_str())) {
+            None => r.fail(&format!("host key {name}"), &format!("no pinned key for {known_name} in {}", cfg.ssh.known_hosts)),
             Some(l) => match ssh::fingerprint(l) {
                 Ok(fp) if fp == t.host_key => r.ok(&format!("host key {name}"), &fp),
                 Ok(fp) => r.fail(&format!("host key {name}"), &format!("known_hosts has {fp}, migration.toml says {}", t.host_key)),

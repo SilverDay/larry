@@ -226,7 +226,7 @@ fn run(cli: &Cli) -> Result<u8, String> {
     match &cli.command {
         Command::Init => {
             let deps = init::Deps {
-                scan: &|a| larry_transport::ssh::scan_host_key(a),
+                scan: &|a, p| larry_transport::ssh::scan_host_key(a, p),
                 gen_key: &|p| {
                     larry_transport::Cmd::new("ssh-keygen")
                         .args(["-q", "-t", "ed25519", "-N", "", "-C", "larry transfer key", "-f"])
