@@ -3,4 +3,3 @@
 The existing script chain that larry replaces. Behaviour here defines the expected
 behaviour (see docs/spec.md, Testing). Not part of the build.
 
-Still missing: create-apache-vhost.sh (pool and vhost templates, LOG_DIR).

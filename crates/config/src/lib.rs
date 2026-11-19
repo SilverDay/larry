@@ -363,17 +363,33 @@ fn is_path_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_' || c == b'-')
 }
 
-/// Pool user for a domain. Longer than 32 characters is cut to 24 plus an
-/// 8-character hash of the full name, so distinct domains stay distinct.
+/// Lowercase, runs of anything but a-z0-9 become one dash, no leading/trailing dash
+/// (`sanitize_pool_name` in create-apache-vhost.sh).
+pub fn dashed(domain: &str) -> String {
+    let mut out = String::new();
+    for c in domain.to_ascii_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// Pool user for a domain. Over 32 characters it is cut to 23, then `-` and 8 hex
+/// characters of a hash of the domain, as create-apache-vhost.sh does, so distinct
+/// domains stay distinct. (The script hashes with md5, larry with sha256: only
+/// users larry creates get larry's suffix; an existing vhost's pool is found via its socket.)
 pub fn pool_user(domain: &str, pattern: &str) -> String {
-    let name = pattern.replace("{domain_dashed}", &domain.replace('.', "-")).replace("{domain}", domain);
+    let name = pattern.replace("{domain_dashed}", &dashed(domain)).replace("{domain}", domain);
     if name.len() <= 32 {
         return name;
     }
-    let hash = Sha256::digest(name.as_bytes());
+    let hash = Sha256::digest(domain.as_bytes());
     let suffix: String = hash.iter().take(4).map(|b| format!("{b:02x}")).collect();
-    let head: String = name.chars().take(24).collect();
-    format!("{head}{suffix}")
+    let head: String = name.chars().take(23).collect();
+    format!("{head}-{suffix}")
 }
 
 #[cfg(test)]
@@ -443,6 +459,8 @@ domain = "blog.example.org"
         assert_eq!(a.len(), 32);
         assert_eq!(b.len(), 32);
         assert_ne!(a, b);
+        assert_eq!(&a[23..24], "-");
+        assert_eq!(dashed("Shop_1..Example.ORG"), "shop-1-example-org");
     }
 
     #[test]

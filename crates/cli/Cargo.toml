@@ -7,3 +7,6 @@ publish.workspace = true
 
 [dependencies]
 clap.workspace = true
+larry-config = { path = "../config" }
+larry-discover = { path = "../discover" }
+larry-plan = { path = "../plan" }

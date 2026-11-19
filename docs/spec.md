@@ -313,8 +313,8 @@ The current scripts and their test harness define the expected behaviour. Every 
 
 Settled on 2 Nov 2026: prior art, TLS, app DB users, open\_basedir, old paths, target-side root steps, cron and mail, license, name. The decisions are in the sections above.
 
-- [ ] Log directory: confirm the `LOG_DIR` path in `create-apache-vhost.sh`.
-- [ ] Pool defaults: confirm them against the current `create-apache-vhost.sh`; they come from its July 2026 version.
+- [x] Log directory: `LOG_DIR` is `<vhost>/logs` in `create-apache-vhost.sh` (confirmed 2026-11-19).
+- [x] Pool defaults: match `create-apache-vhost.sh` (pm ondemand, max_children 4, idle 10s, max_requests 500, error_log in logs/); confirmed 2026-11-19.
 
 ## Sources
 
