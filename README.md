@@ -9,7 +9,7 @@ The scripts it replaces are kept in [reference/](reference/) as the behavioural 
 | --- | --- |
 | `config check` | done |
 | `init` | done (wizard, host-key pinning, ssh config, sshd/authorized_keys snippets) |
-| `discover` | done (mail setup, non-InnoDB tables and DEFINER findings still to add) |
+| `discover` | done (vhosts, nested roots, databases, PHP settings, old paths, cron, non-InnoDB tables, DEFINER accounts, how the site sends mail) |
 | `plan` | done (`--interactive` not yet; use `--db DOMAIN=NAME`) |
 | `preflight` / `target preflight` | partly: tools, secret files, pinned keys, DB access, reachability, PHP-FPM versions, free space. Collation and name/ownership conflict checks to come |
 | `target sshd` | done (print, or `--apply` with backup, `sshd -t` and effective-config check) |

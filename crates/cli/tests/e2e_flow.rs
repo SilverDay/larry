@@ -129,10 +129,24 @@ fn sync_then_apply_end_to_end() {
     )
     .unwrap();
 
+    // preflight hands the facts over; the target side reads them and reports
+    let (_, out) = larry(&d, &["preflight"]);
+    assert!(out.contains("ok    facts for web1"), "{out}");
+    let t = Command::new(env!("CARGO_BIN_EXE_larry"))
+        .args(["target", "preflight", "--vhost-base"])
+        .arg(d.join("vhosts"))
+        .arg("--incoming")
+        .arg(d.join("incoming"))
+        .output()
+        .unwrap();
+    let t = String::from_utf8_lossy(&t.stdout).to_string();
+    assert!(t.contains("site shop.example.org") && !t.contains("FAIL  site"), "{t}");
+    assert!(!t.contains("no preflight.json"), "{t}");
+
     // dry run changes nothing on the target
     let (code, out) = larry(&d, &["sync", "--dry-run"]);
     assert_eq!(code, 0, "{out}");
-    assert!(std::fs::read_dir(d.join("incoming")).unwrap().next().is_none(), "dry run pushed something: {out}");
+    assert!(std::fs::read_dir(d.join("incoming")).unwrap().all(|e| e.unwrap().file_name() == "preflight.json"), "dry run pushed something: {out}");
 
     // first sync
     let (code, out) = larry(&d, &["sync"]);

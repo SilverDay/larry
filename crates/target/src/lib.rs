@@ -6,6 +6,7 @@
 
 pub mod appconfig;
 pub mod apply;
+pub mod facts;
 pub mod manifest;
 pub mod perms;
 pub mod pool;

@@ -3,7 +3,6 @@
 //! Reports everything that needs a human decision and never guesses.
 //! Exit status: 0 clean, 2 review needed, 1 error.
 //!
-//! Not yet covered: non-InnoDB tables and DEFINER accounts (db stage), how a site sends mail.
 
 macro_rules! re {
     ($p:expr) => {{
@@ -14,6 +13,8 @@ macro_rules! re {
 
 pub mod apache;
 pub mod dbdetect;
+pub mod dbfacts;
+pub mod mail;
 pub mod model;
 pub mod scan;
 
@@ -34,6 +35,8 @@ pub struct Env {
     pub hostnames: BTreeSet<String>,
     /// `None` with `--no-db-check`.
     pub databases: Option<BTreeSet<String>>,
+    /// Engines and DEFINER accounts per database; `None` with `--no-db-check`.
+    pub db_facts: Option<dbfacts::DbFacts>,
     pub group_file: PathBuf,
     pub cron_files: Vec<PathBuf>,
 }
@@ -62,6 +65,10 @@ impl Env {
                 Some(out.stdout.split_whitespace().filter(|d| !dbdetect::SYSTEM_DBS.contains(d)).map(String::from).collect())
             }
         };
+        let db_facts = match db_defaults_file {
+            Some(f) => Some(dbfacts::collect(f)?),
+            None => None,
+        };
         let hostname = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim().to_string();
         let mut cron_files = vec![PathBuf::from("/etc/crontab")];
         for dir in ["/etc/cron.d", "/var/spool/cron/crontabs"] {
@@ -74,6 +81,7 @@ impl Env {
             modules,
             hostnames: [hostname].into_iter().filter(|h| !h.is_empty()).collect(),
             databases,
+            db_facts,
             group_file: PathBuf::from("/etc/group"),
             cron_files,
         })
@@ -266,6 +274,34 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
             _ => {}
         }
 
+        // engines and definers of the resolved database
+        if let (Some(facts), Some(db)) = (&env.db_facts, rec.db.name.clone().filter(|_| rec.db.status == DbStatus::Resolved)) {
+            if let Some(t) = facts.non_innodb.get(&db) {
+                let list: Vec<String> = t.iter().take(5).map(|(n, e)| format!("{n} ({e})")).collect();
+                rec.add(
+                    Level::Info,
+                    "non-innodb",
+                    format!(
+                        "{} non-InnoDB table(s) in '{db}': {}{}. The dump locks the tables (writes wait) instead of taking a snapshot",
+                        t.len(),
+                        list.join(", "),
+                        if t.len() > 5 { ", ..." } else { "" }
+                    ),
+                );
+            }
+            let foreign: Vec<&String> = facts.definers.get(&db).map(|s| s.iter().filter(|d| !dbfacts::is_builtin_definer(d)).collect()).unwrap_or_default();
+            if !foreign.is_empty() {
+                rec.add(
+                    Level::Review,
+                    "definers",
+                    format!(
+                        "views, triggers, routines or events of '{db}' run as {}: these accounts must exist on the target or they fail at query time",
+                        foreign.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+                    ),
+                );
+            }
+        }
+
         // files
         let new_vroot = format!("{base}/{}", rec.domain);
         let old = vroot.display().to_string();
@@ -306,6 +342,10 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
                 "cron",
                 format!("cron entries point into the site; v1 does not move cron jobs: {}", cron.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" | ")),
             );
+        }
+        let mail = mail::scan(&vroot, &excludes);
+        if !mail.is_empty() {
+            rec.add(if mail.needs_local_mta() { Level::Review } else { Level::Info }, "mail", format!("sends mail: {}", mail.summary()));
         }
         rec.add(Level::Info, "size", format!("{} files, {} bytes", rec.file_count, rec.size_bytes));
     }
@@ -475,6 +515,7 @@ mod tests {
             modules: String::new(),
             hostnames: BTreeSet::new(),
             databases: dbs.map(|d| d.iter().map(|s| s.to_string()).collect()),
+            db_facts: None,
             group_file: root.join("group"),
             cron_files: vec![root.join("crontab")],
         }
@@ -574,6 +615,26 @@ mod tests {
             assert!(r.skip.is_some(), "{} should be held back", r.domain);
             assert!(r.needs_review());
         }
+        fs::remove_dir_all(&t).unwrap();
+    }
+
+    #[test]
+    fn engines_definers_and_mail_become_findings() {
+        let t = tmpdir("facts");
+        let site = t.join("var-www/shop.example.org");
+        write(&site.join("public/wp-config.php"), "<?php\ndefine('DB_NAME', 'shop_db');\n");
+        write(&site.join("public/contact.php"), "<?php mail($to, $subject, $body);");
+        let s = vhost(&t.join("shop.conf"), "shop.example.org", Some(&site.join("public")));
+        let mut e = env(s, Some(&["shop_db"]), &t);
+        e.db_facts = Some(dbfacts::parse("shop_db\tlog\tMyISAM\n", "shop_db\tapp@localhost\nshop_db\troot@localhost\n"));
+        let recs = build_inventory(&e, &Options { vhost_base: "/srv/vhosts".into(), max_depth: 5 });
+        let f = |code: &str| recs[0].findings.iter().find(|f| f.code == code).unwrap_or_else(|| panic!("no {code} finding: {:?}", recs[0].findings));
+        assert_eq!(f("non-innodb").level, Level::Info);
+        assert!(f("non-innodb").message.contains("log (MyISAM)"));
+        assert_eq!(f("definers").level, Level::Review);
+        assert!(f("definers").message.contains("app@localhost") && !f("definers").message.contains("root@localhost"));
+        assert_eq!(f("mail").level, Level::Review);
+        assert!(f("mail").message.contains("contact.php"));
         fs::remove_dir_all(&t).unwrap();
     }
 }

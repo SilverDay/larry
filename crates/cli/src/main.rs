@@ -174,6 +174,9 @@ enum TargetAction {
         vhost_base: PathBuf,
         #[arg(long, default_value = "/srv/migration-incoming")]
         incoming: PathBuf,
+        /// MySQL defaults file of this target's admin account: checks collations and existing databases
+        #[arg(long)]
+        db_defaults_file: Option<PathBuf>,
     },
     /// Print (or with --apply, install and verify) the sshd Match block for the transfer account
     Sshd {
@@ -235,12 +238,12 @@ fn run(cli: &Cli) -> Result<u8, String> {
         }
         Command::Preflight => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
-            let r = preflight::source(&cfg);
+            let r = preflight::source(&cfg, &dir_of(&cli.config));
             print!("{}", r.text());
             Ok(if r.failed { 1 } else { 0 })
         }
-        Command::Target { action: TargetAction::Preflight { php, vhost_base, incoming } } => {
-            let r = preflight::target(php, vhost_base, incoming);
+        Command::Target { action: TargetAction::Preflight { php, vhost_base, incoming, db_defaults_file } } => {
+            let r = preflight::target(php, vhost_base, incoming, db_defaults_file.as_deref());
             print!("{}", r.text());
             Ok(if r.failed { 1 } else { 0 })
         }
