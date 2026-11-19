@@ -1,4 +1,7 @@
 use clap::{Parser, Subcommand};
+mod init;
+mod preflight;
+
 use larry_config::MigrationConfig;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -32,15 +35,50 @@ enum Command {
         #[arg(long = "db", value_name = "DOMAIN=NAME")]
         db: Vec<String>,
     },
+    /// Check tools, secret files, pinned host keys, database access and reachability
     Preflight,
     Provision,
     Sync,
     Cutover,
     Cleanup,
+    /// Commands that run on a target server, as root, by an admin
+    Target {
+        #[command(subcommand)]
+        action: TargetAction,
+    },
     /// Configuration helpers
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum TargetAction {
+    /// Check tools, PHP-FPM versions and free space on this target
+    Preflight {
+        /// PHP-FPM versions the planned sites need, e.g. 8.3 (repeatable)
+        #[arg(long = "php")]
+        php: Vec<String>,
+        #[arg(long, default_value = "/srv/vhosts")]
+        vhost_base: PathBuf,
+        #[arg(long, default_value = "/srv/migration-incoming")]
+        incoming: PathBuf,
+    },
+    /// Print (or with --apply, install and verify) the sshd Match block for the transfer account
+    Sshd {
+        #[arg(long)]
+        target: String,
+        #[arg(long, default_value = "migrate")]
+        user: String,
+        /// The source server's public IP address
+        #[arg(long)]
+        source_ip: String,
+        #[arg(long, default_value = "/etc/ssh/sshd_config")]
+        sshd_config: PathBuf,
+        /// Back up sshd_config, write the block, run sshd -t and check the effective settings
+        #[arg(long)]
+        apply: bool,
     },
 }
 
@@ -70,6 +108,43 @@ fn dir_of(config: &Path) -> PathBuf {
 
 fn run(cli: &Cli) -> Result<u8, String> {
     match &cli.command {
+        Command::Init => {
+            let deps = init::Deps {
+                scan: &|a| larry_transport::ssh::scan_host_key(a),
+                gen_key: &|p| {
+                    larry_transport::Cmd::new("ssh-keygen")
+                        .args(["-q", "-t", "ed25519", "-N", "", "-C", "larry transfer key", "-f"])
+                        .arg(p)
+                        .run_checked()
+                        .map_err(|e| e.to_string())?;
+                    std::fs::read_to_string(format!("{}.pub", p.display())).map_err(|e| e.to_string())
+                },
+            };
+            init::run(&dir_of(&cli.config), &mut std::io::stdin().lock(), &mut std::io::stdout(), &deps)?;
+            Ok(0)
+        }
+        Command::Preflight => {
+            let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
+            let r = preflight::source(&cfg);
+            print!("{}", r.text());
+            Ok(if r.failed { 1 } else { 0 })
+        }
+        Command::Target { action: TargetAction::Preflight { php, vhost_base, incoming } } => {
+            let r = preflight::target(php, vhost_base, incoming);
+            print!("{}", r.text());
+            Ok(if r.failed { 1 } else { 0 })
+        }
+        Command::Target { action: TargetAction::Sshd { target, user, source_ip, sshd_config, apply } } => {
+            if !*apply {
+                print!("{}", larry_transport::ssh::sshd_block(target, user, source_ip)?);
+                println!("# printed only; add --apply to install it (backup, sshd -t and an effective-config check included)");
+                return Ok(0);
+            }
+            let sshd = larry_transport::ssh::Sshd::find(sshd_config)?;
+            let backup = larry_transport::ssh::apply_block(&sshd, target, user, source_ip, &larry_db::stamp(larry_db::now()))?;
+            println!("sshd_config updated and verified (backup: {}). Reload sshd to activate it.", backup.display());
+            Ok(0)
+        }
         Command::Config { action: ConfigAction::Check } => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
             cfg.check_secret_files().map_err(|e| e.to_string())?;

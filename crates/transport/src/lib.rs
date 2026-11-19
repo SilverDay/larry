@@ -5,6 +5,9 @@
 //! which removes the "ssh swallows the rest of the loop's stdin" class of bug.
 //! Secrets must never be passed as arguments; use defaults files.
 
+pub mod ssh;
+pub mod transfer;
+
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::io::{Read, Write};
