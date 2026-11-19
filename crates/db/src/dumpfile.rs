@@ -23,12 +23,7 @@ pub fn header_line(domain: &str, db: &str, source: &str, dumped_at: &str) -> Str
 pub fn parse_header(line: &str) -> Option<Header> {
     let c = re!(r"^-- migration-db: domain=([A-Za-z0-9.-]+) db=([A-Za-z0-9_-]+)(?: source=(\S+))?(?: dumped_at=(\S+))?\s*$")
         .captures(line.trim_end_matches('\r'))?;
-    Some(Header {
-        domain: c[1].into(),
-        db: c[2].into(),
-        source: c.get(3).map(|m| m.as_str().into()),
-        dumped_at: c.get(4).map(|m| m.as_str().into()),
-    })
+    Some(Header { domain: c[1].into(), db: c[2].into(), source: c.get(3).map(|m| m.as_str().into()), dumped_at: c.get(4).map(|m| m.as_str().into()) })
 }
 
 pub fn sha256_file(path: &Path) -> Result<String, String> {
@@ -63,9 +58,8 @@ pub fn write_sidecar(path: &Path) -> Result<String, String> {
 /// Compare the hash only, so it works from any directory and ignores whatever path the sidecar names.
 pub fn verify_checksum(path: &Path) -> Result<String, String> {
     let side = sidecar(path);
-    let text = std::fs::read_to_string(&side).map_err(|_| {
-        format!("no {} next to it; refusing to use an unverified file", side.file_name().unwrap_or_default().to_string_lossy())
-    })?;
+    let text = std::fs::read_to_string(&side)
+        .map_err(|_| format!("no {} next to it; refusing to use an unverified file", side.file_name().unwrap_or_default().to_string_lossy()))?;
     let expected = text.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
     if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(format!("malformed {}", side.display()));

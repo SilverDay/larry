@@ -89,7 +89,11 @@ pub fn parse_key(line: &str) -> Result<(String, String), String> {
 pub fn fingerprint(key_line: &str) -> Result<String, String> {
     let (t, b) = parse_key(key_line)?;
     let out = Cmd::new("ssh-keygen").args(["-l", "-f", "-"]).stdin_data(format!("{t} {b}\n")).run_checked().map_err(|e| e.to_string())?;
-    out.stdout.split_whitespace().find(|w| w.starts_with("SHA256:")).map(String::from).ok_or_else(|| format!("unexpected ssh-keygen output: {}", out.stdout.trim()))
+    out.stdout
+        .split_whitespace()
+        .find(|w| w.starts_with("SHA256:"))
+        .map(String::from)
+        .ok_or_else(|| format!("unexpected ssh-keygen output: {}", out.stdout.trim()))
 }
 
 /// Read a target's host key with `ssh-keyscan`. The result is only a candidate: the admin must
@@ -97,11 +101,7 @@ pub fn fingerprint(key_line: &str) -> Result<String, String> {
 pub fn scan_host_key(address: &str) -> Result<String, String> {
     plain("address", address)?;
     let out = Cmd::new("ssh-keyscan").args(["-t", "ed25519", "-T", "10"]).arg(address).run_checked().map_err(|e| e.to_string())?;
-    out.stdout
-        .lines()
-        .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
-        .map(String::from)
-        .ok_or_else(|| format!("{address}: no ed25519 host key offered"))
+    out.stdout.lines().find(|l| !l.trim().is_empty() && !l.starts_with('#')).map(String::from).ok_or_else(|| format!("{address}: no ed25519 host key offered"))
 }
 
 /// The known_hosts line, but only if the key's fingerprint is the one the admin confirmed.
@@ -191,7 +191,11 @@ impl Sshd {
 
     pub fn test(&self) -> Result<(), String> {
         let out = Cmd::new(&self.binary).arg("-t").arg("-f").arg(&self.config).run().map_err(|e| e.to_string())?;
-        if out.success() { Ok(()) } else { Err(format!("sshd -t failed: {}", out.stderr.trim())) }
+        if out.success() {
+            Ok(())
+        } else {
+            Err(format!("sshd -t failed: {}", out.stderr.trim()))
+        }
     }
 
     /// Users denied for a connection from `addr`, from the effective configuration (`sshd -T -C`).
@@ -206,12 +210,7 @@ impl Sshd {
             .arg(format!("user={user},host=larry-check,addr={addr}"))
             .run_checked()
             .map_err(|e| e.to_string())?;
-        Ok(out
-            .stdout
-            .lines()
-            .filter_map(|l| l.strip_prefix("denyusers "))
-            .flat_map(|l| l.split_whitespace().map(String::from).collect::<Vec<_>>())
-            .collect())
+        Ok(out.stdout.lines().filter_map(|l| l.strip_prefix("denyusers ")).flat_map(|l| l.split_whitespace().map(String::from).collect::<Vec<_>>()).collect())
     }
 
     /// The account must be refused from `other_addr` and allowed from `source_ip`.
@@ -307,7 +306,15 @@ mod tests {
     fn ssh_config_is_strict_and_absolute() {
         let t = [TargetSsh { name: "web1", address: "192.0.2.10", user: "migrate", identity_file: "/root/larry/id_ed25519" }];
         let c = ssh_config(&t, "/root/larry/known_hosts", "/root/larry/").unwrap();
-        for want in ["Host larry-web1", "HostName 192.0.2.10", "StrictHostKeyChecking yes", "UserKnownHostsFile /root/larry/known_hosts", "ControlMaster auto", "ControlPath /root/larry/cm-%C", "IdentitiesOnly yes"] {
+        for want in [
+            "Host larry-web1",
+            "HostName 192.0.2.10",
+            "StrictHostKeyChecking yes",
+            "UserKnownHostsFile /root/larry/known_hosts",
+            "ControlMaster auto",
+            "ControlPath /root/larry/cm-%C",
+            "IdentitiesOnly yes",
+        ] {
             assert!(c.contains(want), "missing {want}\n{c}");
         }
         assert!(ssh_config(&t, "known_hosts", "/x").is_err(), "relative path refused");

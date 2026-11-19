@@ -27,9 +27,9 @@ fn first(re: &Regex, text: &str) -> Option<String> {
 
 fn define(key: &str, text: &str) -> Option<String> {
     let re = Regex::new(&format!(r#"define\s*\(\s*['"]{key}['"]\s*,\s*(?:'([^']*)'|"([^"]*)")"#)).unwrap();
-    text.lines().filter(|l| !l.trim_start().starts_with(['#', '/', '*'])).find_map(|l| {
-        re.captures(l).map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()).unwrap_or_default())
-    })
+    text.lines()
+        .filter(|l| !l.trim_start().starts_with(['#', '/', '*']))
+        .find_map(|l| re.captures(l).map(|c| c.get(1).or(c.get(2)).map(|m| m.as_str().to_string()).unwrap_or_default()))
 }
 
 fn env(keys: &[&str], text: &str) -> Option<String> {
@@ -140,7 +140,11 @@ mod tests {
         let c = find(&d, "blog").unwrap();
         assert_eq!((c.user.as_str(), c.password.as_str()), ("bu", "s3 cret"));
         assert!(!is_local_host(&c.host));
-        std::fs::write(d.join("public/configuration.php"), "<?php class JConfig {\n public $host = 'localhost';\n public $user = 'ju';\n public $password = 'jp';\n public $db = 'joom';\n}").unwrap();
+        std::fs::write(
+            d.join("public/configuration.php"),
+            "<?php class JConfig {\n public $host = 'localhost';\n public $user = 'ju';\n public $password = 'jp';\n public $db = 'joom';\n}",
+        )
+        .unwrap();
         assert_eq!(find(&d, "joom").unwrap().user, "ju");
         let _ = std::fs::remove_dir_all(&d);
     }

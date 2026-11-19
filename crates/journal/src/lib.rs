@@ -25,10 +25,9 @@ impl fmt::Display for Error {
         match self {
             Error::Io(p, e) => write!(f, "{p}: {e}"),
             Error::Corrupt { path, line, msg } => write!(f, "{path}:{line}: {msg}"),
-            Error::PlanChanged { journal, current } => write!(
-                f,
-                "the plan changed since the journal was written (journal {journal}, now {current}); refusing to resume"
-            ),
+            Error::PlanChanged { journal, current } => {
+                write!(f, "the plan changed since the journal was written (journal {journal}, now {current}); refusing to resume")
+            }
         }
     }
 }
@@ -90,12 +89,7 @@ impl Journal {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| Error::Io(p.clone(), e))?;
         }
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .mode(0o600)
-            .open(path)
-            .map_err(|e| Error::Io(p.clone(), e))?;
+        let file = OpenOptions::new().create(true).append(true).mode(0o600).open(path).map_err(|e| Error::Io(p.clone(), e))?;
         let mut entries = Vec::new();
         let reader = BufReader::new(File::open(path).map_err(|e| Error::Io(p.clone(), e))?);
         for (i, line) in reader.lines().enumerate() {
@@ -104,8 +98,7 @@ impl Journal {
             if line.trim().is_empty() {
                 continue;
             }
-            let entry = serde_json::from_str(line)
-                .map_err(|e| Error::Corrupt { path: p.clone(), line: i + 1, msg: e.to_string() })?;
+            let entry = serde_json::from_str(line).map_err(|e| Error::Corrupt { path: p.clone(), line: i + 1, msg: e.to_string() })?;
             entries.push(entry);
         }
         Ok(Journal { path: path.to_path_buf(), file, entries })
@@ -133,10 +126,7 @@ impl Journal {
     /// `--resume` precondition: the journal's latest plan hash must equal the current one.
     pub fn check_resume(&self, current_plan_hash: &str) -> Result<(), Error> {
         match self.entries.last() {
-            Some(last) if last.plan_hash != current_plan_hash => Err(Error::PlanChanged {
-                journal: last.plan_hash.clone(),
-                current: current_plan_hash.into(),
-            }),
+            Some(last) if last.plan_hash != current_plan_hash => Err(Error::PlanChanged { journal: last.plan_hash.clone(), current: current_plan_hash.into() }),
             _ => Ok(()),
         }
     }

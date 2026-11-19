@@ -70,7 +70,8 @@ fn push_probe_and_refusals_through_a_real_sshd() {
         ),
     )
     .unwrap();
-    let _server = Sshd(Command::new(&sshd_bin).args(["-D", "-e", "-f"]).arg(d.join("sshd_config")).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
+    let _server =
+        Sshd(Command::new(&sshd_bin).args(["-D", "-e", "-f"]).arg(d.join("sshd_config")).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
     for _ in 0..40 {
         if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
             break;
@@ -132,7 +133,6 @@ fn push_probe_and_refusals_through_a_real_sshd() {
     std::fs::write(d.join("known_hosts"), format!("[127.0.0.1]:{port} {t} {b}\n")).unwrap();
     let r = ssh_cmd(&cfg, "web1", &["true"]).unwrap().run().unwrap();
     assert!(!r.success() && r.stderr.contains("Host key verification failed"), "{}", r.stderr);
-
 }
 
 fn larry_transport_sha(p: &Path) -> String {

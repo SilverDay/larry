@@ -53,7 +53,9 @@ pub fn rsync_tree(ssh_config: &str, target: &str, src: &Path, dest: &str, o: &Tr
     no_space("destination", dest)?;
     let s = src.to_string_lossy();
     no_space("source directory", &s)?;
-    let mut c = Cmd::new("rsync").args(["-a", "--partial", "--mkpath", "--no-owner", "--no-group", "--no-devices", "--no-specials", "-e"]).arg(format!("ssh -F {ssh_config}"));
+    let mut c = Cmd::new("rsync")
+        .args(["-a", "--partial", "--mkpath", "--no-owner", "--no-group", "--no-devices", "--no-specials", "-e"])
+        .arg(format!("ssh -F {ssh_config}"));
     if o.delete {
         c = c.arg("--delete");
     }
@@ -150,7 +152,8 @@ mod tests {
 
     #[test]
     fn commands_are_argument_lists_with_the_pinned_config() {
-        let c = rsync_push("/root/larry/ssh_config", "web1", &[Path::new("/var/tmp/larry/a.db.sql.gz"), Path::new("/var/tmp/larry/a.db.sql.gz.sha256")], "./").unwrap();
+        let c = rsync_push("/root/larry/ssh_config", "web1", &[Path::new("/var/tmp/larry/a.db.sql.gz"), Path::new("/var/tmp/larry/a.db.sql.gz.sha256")], "./")
+            .unwrap();
         assert_eq!(
             c.display(),
             "rsync -a --partial --mkpath -e 'ssh -F /root/larry/ssh_config' /var/tmp/larry/a.db.sql.gz /var/tmp/larry/a.db.sql.gz.sha256 larry-web1:./"

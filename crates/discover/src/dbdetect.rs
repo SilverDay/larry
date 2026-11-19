@@ -12,17 +12,25 @@ use std::sync::OnceLock;
 pub const SYSTEM_DBS: [&str; 4] = ["mysql", "information_schema", "performance_schema", "sys"];
 
 const CONFIG_NAMES: [&str; 17] = [
-    "wp-config.php", ".env", ".env.local", ".env.production", ".env.prod",
+    "wp-config.php",
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".env.prod",
     "configuration.php",      // Joomla
     "config.ini.php",         // Matomo
     "settings.php",           // Drupal, TYPO3 v12+
     "localconfiguration.php", // TYPO3 <= 11
     "env.php",                // Magento
-    "parameters.yml", "parameters.yaml", "database.yml", "database.yaml",
-    "config.php", "config.inc", "config.inc.php",
+    "parameters.yml",
+    "parameters.yaml",
+    "database.yml",
+    "database.yaml",
+    "config.php",
+    "config.inc",
+    "config.inc.php",
 ];
-const PRUNE_DIRS: [&str; 10] =
-    ["vendor", "node_modules", ".git", ".svn", ".hg", "cache", "tmp", "temp", "logs", "log"];
+const PRUNE_DIRS: [&str; 10] = ["vendor", "node_modules", ".git", ".svn", ".hg", "cache", "tmp", "temp", "logs", "log"];
 const PRUNE_DIRS_MORE: [&str; 3] = ["uploads", "backup", "backups"];
 const MAX_FILE_BYTES: u64 = 1_000_000;
 
@@ -49,9 +57,7 @@ fn db_patterns() -> &'static [Regex] {
             // plain PHP variables
             format!(r#"\$(?:db_?name|database|db_database|dbName)\s*=\s*['"]{N}['"]"#),
             // mysqli_connect('host','user','pass','x') / new mysqli(...)
-            format!(
-                r#"(?:mysqli_connect|new\s+mysqli)\s*\(\s*['"][^'"]*['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"]{N}['"]"#
-            ),
+            format!(r#"(?:mysqli_connect|new\s+mysqli)\s*\(\s*['"][^'"]*['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"][^'"]*['"]\s*,\s*['"]{N}['"]"#),
             // mysqli_select_db($link, 'x')
             format!(r#"mysqli?_select_db\s*\(\s*(?:\$\w+\s*,\s*)?['"]{N}['"]"#),
             // YAML: database_name: x
@@ -163,15 +169,14 @@ pub fn resolve(found: &BTreeMap<String, Vec<String>>, dbs: Option<&BTreeSet<Stri
                 }
                 0 if found.is_empty() => mk(DbStatus::Absent, None, None, true, "no DB reference found (static site?)".into(), &empty),
                 0 => mk(
-                    DbStatus::Unresolved, None, None, true,
+                    DbStatus::Unresolved,
+                    None,
+                    None,
+                    true,
                     format!("DB name(s) found but no such database here: {} (remote DB? stale config?)", list(found)),
                     found,
                 ),
-                _ => mk(
-                    DbStatus::Unresolved, None, None, true,
-                    format!("ambiguous, several existing databases referenced: {}", list(&verified)),
-                    &verified,
-                ),
+                _ => mk(DbStatus::Unresolved, None, None, true, format!("ambiguous, several existing databases referenced: {}", list(&verified)), &verified),
             }
         }
     }

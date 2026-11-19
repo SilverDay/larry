@@ -41,7 +41,11 @@ fn q(s: &str) -> String {
 }
 
 fn key(k: &str) -> String {
-    if !k.is_empty() && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-') { k.into() } else { q(k) }
+    if !k.is_empty() && k.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-') {
+        k.into()
+    } else {
+        q(k)
+    }
 }
 
 /// Which target a site gets: the default one, or the only one.
@@ -94,7 +98,8 @@ pub fn build(records: &[Record], cfg: &MigrationConfig, answers: &Answers) -> Re
             body += &format!("db            = {}\n", q(db));
         }
         if !r.old_path_hits.is_empty() {
-            body += &format!("# {} PHP file(s) mention the old path {}; set true to rewrite them\n", r.old_path_hits.len(), r.vhost_root.as_deref().unwrap_or("?"));
+            body +=
+                &format!("# {} PHP file(s) mention the old path {}; set true to rewrite them\n", r.old_path_hits.len(), r.vhost_root.as_deref().unwrap_or("?"));
         }
         body += "rewrite_paths = false\n";
 
@@ -112,7 +117,12 @@ pub fn build(records: &[Record], cfg: &MigrationConfig, answers: &Answers) -> Re
                 _ => {}
             }
             if s.kind.starts_with("php_admin") {
-                notes.push(format!("# {} was {}, which pool settings treat as php_{}", s.name, s.kind, if s.kind.ends_with("flag") { "flag" } else { "value" }));
+                notes.push(format!(
+                    "# {} was {}, which pool settings treat as php_{}",
+                    s.name,
+                    s.kind,
+                    if s.kind.ends_with("flag") { "flag" } else { "value" }
+                ));
             }
         }
         if !vals.is_empty() || !flags.is_empty() {
@@ -169,7 +179,10 @@ pub enum Written {
     Updated(PathBuf),
     Unchanged(PathBuf),
     /// An edited sites.toml was left alone; the proposal is in `path`, with this diff.
-    Diverted { path: PathBuf, diff: String },
+    Diverted {
+        path: PathBuf,
+        diff: String,
+    },
 }
 
 pub fn write_plan(sites_toml: &Path, plan: &Plan) -> Result<Written, String> {

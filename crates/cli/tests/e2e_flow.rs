@@ -48,7 +48,11 @@ fn apply(d: &Path, extra: &[&str]) -> (i32, String) {
 
 #[test]
 fn sync_then_apply_end_to_end() {
-    if !Path::new("/usr/sbin/sshd").exists() || !Path::new("/usr/bin/rrsync").exists() || larry_transport::find_tool(&["rsync"]).is_none() || larry_transport::find_tool(&["fakeroot"]).is_none() {
+    if !Path::new("/usr/sbin/sshd").exists()
+        || !Path::new("/usr/bin/rrsync").exists()
+        || larry_transport::find_tool(&["rsync"]).is_none()
+        || larry_transport::find_tool(&["fakeroot"]).is_none()
+    {
         eprintln!("SKIPPED: sshd, rrsync, rsync or fakeroot not installed");
         return;
     }
@@ -82,7 +86,8 @@ fn sync_then_apply_end_to_end() {
         format!("Port {port}\nListenAddress 127.0.0.1\nHostKey {0}/hostkey\nPidFile {0}/sshd.pid\nAuthorizedKeysFile {0}/authorized_keys\nUsePAM no\nPasswordAuthentication no\nStrictModes no\n", d.display()),
     )
     .unwrap();
-    let _server = Sshd(Command::new("/usr/sbin/sshd").args(["-D", "-e", "-f"]).arg(d.join("sshd_config")).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
+    let _server =
+        Sshd(Command::new("/usr/sbin/sshd").args(["-D", "-e", "-f"]).arg(d.join("sshd_config")).stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap());
     for _ in 0..40 {
         if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
             break;
@@ -95,7 +100,12 @@ fn sync_then_apply_end_to_end() {
     let (t, b) = ssh::parse_key(&pinned).unwrap();
     std::fs::write(d.join("known_hosts"), format!("[127.0.0.1]:{port} {t} {b}\n")).unwrap();
     let identity = d.join("id_ed25519").display().to_string();
-    let generated = ssh::ssh_config(&[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity }], &d.join("known_hosts").display().to_string(), &d.display().to_string()).unwrap();
+    let generated = ssh::ssh_config(
+        &[TargetSsh { name: "web1", address: "127.0.0.1", user: &me, identity_file: &identity }],
+        &d.join("known_hosts").display().to_string(),
+        &d.display().to_string(),
+    )
+    .unwrap();
     std::fs::write(d.join("ssh_config"), format!("Host larry-web1\n    Port {port}\n\n{generated}")).unwrap();
 
     // config, inventory, plan
@@ -146,7 +156,10 @@ fn sync_then_apply_end_to_end() {
     assert!(d.join("vhosts/shop.example.org/logs/access.log").is_file());
     let mode = |p: &Path| std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(p).unwrap().permissions()) & 0o777;
     assert_eq!((mode(&doc), mode(&doc.join("index.php"))), (0o750, 0o640));
-    assert!(std::fs::read_dir(d.join("bak")).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".files.tar.gz")), "nothing to snapshot the first time");
+    assert!(
+        std::fs::read_dir(d.join("bak")).unwrap().all(|e| !e.unwrap().file_name().to_string_lossy().ends_with(".files.tar.gz")),
+        "nothing to snapshot the first time"
+    );
 
     // second round: a changed file and a removed one; with --mirror the removed file moves aside
     std::fs::write(src.join("httpdocs/page.html"), "changed").unwrap();
@@ -159,7 +172,10 @@ fn sync_then_apply_end_to_end() {
     assert!(!doc.join("only-on-target.txt").exists(), "mirror removed it");
     let moved: Vec<_> = walk(&d.join("bak")).into_iter().filter(|p| p.ends_with("only-on-target.txt")).collect();
     assert_eq!(moved.len(), 1, "the removed file is in the backup, not gone");
-    assert!(std::fs::read_dir(d.join("bak")).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().ends_with(".files.tar.gz")), "second run snapshots first");
+    assert!(
+        std::fs::read_dir(d.join("bak")).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().ends_with(".files.tar.gz")),
+        "second run snapshots first"
+    );
 }
 
 fn walk(p: &Path) -> Vec<PathBuf> {

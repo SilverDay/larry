@@ -310,12 +310,8 @@ impl SitesFile {
                 return Err(Error::Invalid(format!("sites.toml: domain '{d}' listed twice")));
             }
             match s.target.as_deref() {
-                Some(t) if !cfg.targets.contains_key(t) => {
-                    return Err(Error::Invalid(format!("sites.toml: {d}: unknown target '{t}'")))
-                }
-                None if cfg.default_target().is_none() => {
-                    return Err(Error::Invalid(format!("sites.toml: {d}: no target and no default target")))
-                }
+                Some(t) if !cfg.targets.contains_key(t) => return Err(Error::Invalid(format!("sites.toml: {d}: unknown target '{t}'"))),
+                None if cfg.default_target().is_none() => return Err(Error::Invalid(format!("sites.toml: {d}: no target and no default target"))),
                 _ => {}
             }
             if let Some(db) = &s.db {

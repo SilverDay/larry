@@ -52,7 +52,11 @@ pub fn source(cfg: &MigrationConfig) -> Report {
     }
 
     for p in [&cfg.ssh.config_file, &cfg.ssh.known_hosts] {
-        if Path::new(p).is_file() { r.ok("file", p) } else { r.fail("file", &format!("{p} is missing (run `larry init`)")) }
+        if Path::new(p).is_file() {
+            r.ok("file", p)
+        } else {
+            r.fail("file", &format!("{p} is missing (run `larry init`)"))
+        }
     }
     let known = std::fs::read_to_string(&cfg.ssh.known_hosts).unwrap_or_default();
     let probe_dir = std::env::temp_dir().join(format!("larry-probe-{}", std::process::id()));

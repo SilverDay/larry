@@ -116,9 +116,7 @@ impl Cmd {
             None
         };
 
-        let out = child
-            .wait_with_output()
-            .map_err(|source| CmdError::Spawn { program: program.clone(), source })?;
+        let out = child.wait_with_output().map_err(|source| CmdError::Spawn { program: program.clone(), source })?;
         if let Some(w) = writer {
             let _ = w.join();
         }
@@ -133,11 +131,7 @@ impl Cmd {
     /// child's stdout (if `output` is given) is copied to `output`, without holding it in memory.
     /// Used for dumps (`mysqldump` to a gzip file) and imports (a gzip file into `mysql`).
     /// stderr is captured; the returned `stdout` is empty when `output` is given.
-    pub fn stream(
-        &self,
-        input: Option<&mut (dyn Read + Send)>,
-        output: Option<&mut (dyn Write + Send)>,
-    ) -> Result<Output, CmdError> {
+    pub fn stream(&self, input: Option<&mut (dyn Read + Send)>, output: Option<&mut (dyn Write + Send)>) -> Result<Output, CmdError> {
         let program = self.program.to_string_lossy().into_owned();
         let spawn_err = |source| CmdError::Spawn { program: program.clone(), source };
         let mut child = Command::new(&self.program)
@@ -183,11 +177,7 @@ impl Cmd {
         if let Some(e) = copy_err {
             return Err(CmdError::Spawn { program, source: e });
         }
-        Ok(Output {
-            code: status.code(),
-            stdout: String::from_utf8_lossy(&out_buf).into_owned(),
-            stderr: String::from_utf8_lossy(&err_buf).into_owned(),
-        })
+        Ok(Output { code: status.code(), stdout: String::from_utf8_lossy(&out_buf).into_owned(), stderr: String::from_utf8_lossy(&err_buf).into_owned() })
     }
 
     /// Run and fail on any non-zero exit.
@@ -196,11 +186,7 @@ impl Cmd {
         if out.success() {
             Ok(out)
         } else {
-            Err(CmdError::Failed {
-                program: self.program.to_string_lossy().into_owned(),
-                code: out.code,
-                stderr: out.stderr,
-            })
+            Err(CmdError::Failed { program: self.program.to_string_lossy().into_owned(), code: out.code, stderr: out.stderr })
         }
     }
 }

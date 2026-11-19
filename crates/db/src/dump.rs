@@ -29,9 +29,8 @@ pub fn check_db_name(db: &str) -> Result<(), String> {
 /// `--single-transaction` would not give a consistent copy of those.
 pub fn choose_mode(sql: &dyn Sql, db: &str) -> Result<DumpMode, String> {
     check_db_name(db)?;
-    let out = sql.query(&format!(
-        "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='{db}' AND TABLE_TYPE='BASE TABLE' AND ENGINE NOT IN ('InnoDB')"
-    ))?;
+    let out = sql
+        .query(&format!("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='{db}' AND TABLE_TYPE='BASE TABLE' AND ENGINE NOT IN ('InnoDB')"))?;
     let n: u64 = out.trim().parse().map_err(|_| format!("unexpected engine count '{}'", out.trim()))?;
     Ok(if n > 0 { DumpMode::LockTables } else { DumpMode::SingleTransaction })
 }
@@ -50,13 +49,7 @@ pub fn dump_database(sql: &dyn Sql, domain: &str, db: &str, source: &str, stagin
     let _ = std::fs::remove_file(&side);
 
     let result = (|| -> Result<(), String> {
-        let f = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&part)
-            .map_err(|e| format!("{}: {e}", part.display()))?;
+        let f = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&part).map_err(|e| format!("{}: {e}", part.display()))?;
         let mut enc = GzEncoder::new(f, Compression::default());
         let header = dumpfile::header_line(domain, db, source, &crate::utc_iso(now));
         writeln!(enc, "{header}").map_err(|e| e.to_string())?;

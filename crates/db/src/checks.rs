@@ -62,7 +62,11 @@ pub enum UserOutcome {
 }
 
 fn check_user(user: &str) -> Result<(), String> {
-    if re!(r"^[A-Za-z0-9_.-]{1,80}$").is_match(user) { Ok(()) } else { Err(format!("'{user}' is not a usable database user name")) }
+    if re!(r"^[A-Za-z0-9_.-]{1,80}$").is_match(user) {
+        Ok(())
+    } else {
+        Err(format!("'{user}' is not a usable database user name"))
+    }
 }
 
 /// The app's DB user: `'<user>'@'localhost'` with that password and rights on its own database only.

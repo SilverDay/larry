@@ -205,7 +205,10 @@ mod tests {
         let kh = std::fs::read_to_string(conf.join("known_hosts")).unwrap();
         assert!(kh.starts_with("192.0.2.10 ssh-ed25519 "));
         let sc = std::fs::read_to_string(conf.join("ssh_config")).unwrap();
-        assert!(sc.contains("StrictHostKeyChecking yes") && sc.contains(&format!("UserKnownHostsFile {}/known_hosts", std::fs::canonicalize(&conf).unwrap().display())));
+        assert!(
+            sc.contains("StrictHostKeyChecking yes")
+                && sc.contains(&format!("UserKnownHostsFile {}/known_hosts", std::fs::canonicalize(&conf).unwrap().display()))
+        );
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("restrict,from=\"192.0.2.1\",command=\"/usr/bin/rrsync -wo /srv/migration-incoming\""));
         assert!(text.contains("Match User migrate Address *,!192.0.2.1"));

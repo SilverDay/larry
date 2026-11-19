@@ -258,16 +258,37 @@ fn run(cli: &Cli) -> Result<u8, String> {
         Command::Sync { files, db, mirror, dry_run, resume, domains } => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
             let both = !*files && !*db;
-            sync::run(&cfg, &dir_of(&cli.config), &sync::Opts { files: *files || both, db: *db || both, mirror: *mirror, dry_run: *dry_run, resume: *resume, only: domains.clone() })
+            sync::run(
+                &cfg,
+                &dir_of(&cli.config),
+                &sync::Opts { files: *files || both, db: *db || both, mirror: *mirror, dry_run: *dry_run, resume: *resume, only: domains.clone() },
+            )
         }
         Command::Cutover { freeze_source, unfreeze, check_only, mirror, dry_run, domains } => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
-            let o = cutover::Opts { freeze_source: *freeze_source, unfreeze: *unfreeze, check_only: *check_only, mirror: *mirror, dry_run: *dry_run, only: domains.clone() };
+            let o = cutover::Opts {
+                freeze_source: *freeze_source,
+                unfreeze: *unfreeze,
+                check_only: *check_only,
+                mirror: *mirror,
+                dry_run: *dry_run,
+                only: domains.clone(),
+            };
             cutover::run(&cfg, &dir_of(&cli.config), &o, &cutover::Apache::debian())
         }
         Command::Cleanup { target, user, sshd_config, incoming, no_certbot, dry_run } => {
             target::need_root(*dry_run)?;
-            cleanup::run(&cleanup::Opts { target: target.clone(), user: user.clone(), sshd_config: sshd_config.clone(), incoming: incoming.clone(), certbot: !*no_certbot, dry_run: *dry_run }, &larry_db::stamp(larry_db::now()))
+            cleanup::run(
+                &cleanup::Opts {
+                    target: target.clone(),
+                    user: user.clone(),
+                    sshd_config: sshd_config.clone(),
+                    incoming: incoming.clone(),
+                    certbot: !*no_certbot,
+                    dry_run: *dry_run,
+                },
+                &larry_db::stamp(larry_db::now()),
+            )
         }
         Command::Provision { t } => target::provision(&t.common()),
         Command::Target { action: TargetAction::Apply { t, adopt, mirror, db_defaults_file } } => {
@@ -313,7 +334,11 @@ fn run(cli: &Cli) -> Result<u8, String> {
                 larry_plan::Written::Updated(p) => println!("updated {} (it had not been edited)", p.display()),
                 larry_plan::Written::Unchanged(p) => println!("{} is up to date", p.display()),
                 larry_plan::Written::Diverted { path, diff } => {
-                    println!("{} was edited by hand and is left untouched.\nProposal written to {}; differences (- yours, + proposed):\n{diff}", sites.display(), path.display());
+                    println!(
+                        "{} was edited by hand and is left untouched.\nProposal written to {}; differences (- yours, + proposed):\n{diff}",
+                        sites.display(),
+                        path.display()
+                    );
                     code = 2;
                 }
             }

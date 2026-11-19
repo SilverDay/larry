@@ -89,12 +89,17 @@ pub fn classify(code: u16) -> Verdict {
 /// The command that asks the target for the site, bypassing DNS.
 pub fn check_cmd(ip: &IpAddr, host: &str, https: bool) -> Cmd {
     let (scheme, port) = if https { ("https", 443) } else { ("http", 80) };
-    Cmd::new("curl").args(["-sS", "-o", "/dev/null", "-m", "20", "-w", "%{http_code}", "--resolve"]).arg(format!("{host}:{port}:{ip}")).arg(format!("{scheme}://{host}/"))
+    Cmd::new("curl")
+        .args(["-sS", "-o", "/dev/null", "-m", "20", "-w", "%{http_code}", "--resolve"])
+        .arg(format!("{host}:{port}:{ip}"))
+        .arg(format!("{scheme}://{host}/"))
 }
 
 pub fn check(ip: &IpAddr, host: &str, https: bool) -> Verdict {
     match check_cmd(ip, host, https).run() {
-        Ok(o) if o.success() => o.stdout.trim().parse::<u16>().map(classify).unwrap_or_else(|_| Verdict::Fail(format!("unexpected output '{}'", o.stdout.trim()))),
+        Ok(o) if o.success() => {
+            o.stdout.trim().parse::<u16>().map(classify).unwrap_or_else(|_| Verdict::Fail(format!("unexpected output '{}'", o.stdout.trim())))
+        }
         Ok(o) => Verdict::Fail(o.stderr.trim().to_string()),
         Err(e) => Verdict::Fail(e.to_string()),
     }
@@ -140,14 +145,24 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts, apache: &Apache) -> Resu
                 println!("would answer 503 on the source for: {}", hosts.join(", "));
             } else {
                 apache.freeze(&hosts)?;
-                println!("source: 503 maintenance page active for {} host name(s). Cron jobs and mail still run; stop them yourself if they write.", hosts.len());
+                println!(
+                    "source: 503 maintenance page active for {} host name(s). Cron jobs and mail still run; stop them yourself if they write.",
+                    hosts.len()
+                );
             }
         } else {
             println!("note: writes on the source are NOT frozen (use --freeze-source); changes after this sync will be lost");
         }
-        let code = crate::sync::run(cfg, dir, &crate::sync::Opts { files: true, db: true, mirror: o.mirror, dry_run: o.dry_run, resume: false, only: o.only.clone() })?;
+        let code = crate::sync::run(
+            cfg,
+            dir,
+            &crate::sync::Opts { files: true, db: true, mirror: o.mirror, dry_run: o.dry_run, resume: false, only: o.only.clone() },
+        )?;
         if code == 1 {
-            return Err("the final sync failed; the sites on the target are NOT current. The maintenance page (if any) stays; `larry cutover --unfreeze` removes it".into());
+            return Err(
+                "the final sync failed; the sites on the target are NOT current. The maintenance page (if any) stays; `larry cutover --unfreeze` removes it"
+                    .into(),
+            );
         }
         println!("\nNext: on each target run `larry target apply` as root, then `larry cutover --check-only` here.");
         return Ok(code);
@@ -173,7 +188,13 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts, apache: &Apache) -> Resu
         }
     }
     println!("\n{failed} failed, {review} to review. Point DNS at the target only when everything is ok.");
-    Ok(if failed > 0 { 1 } else if review > 0 { 2 } else { 0 })
+    Ok(if failed > 0 {
+        1
+    } else if review > 0 {
+        2
+    } else {
+        0
+    })
 }
 
 #[cfg(test)]
@@ -223,7 +244,12 @@ mod tests {
         std::fs::write(d.join("httpd.conf"), conf).unwrap();
         let start = Cmd::new(bin).args(["-f"]).arg(d.join("httpd.conf")).args(["-k", "start"]).run().unwrap();
         let get = |host: &str| -> String {
-            let o = Cmd::new("curl").args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "-H"]).arg(format!("Host: {host}")).arg(format!("http://127.0.0.1:{port}/")).run().unwrap();
+            let o = Cmd::new("curl")
+                .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "-H"])
+                .arg(format!("Host: {host}"))
+                .arg(format!("http://127.0.0.1:{port}/"))
+                .run()
+                .unwrap();
             o.stdout
         };
         let result = (get("a.example.org"), get(&format!("a.example.org:{port}")), get("b.example.org"));

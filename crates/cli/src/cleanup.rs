@@ -30,7 +30,10 @@ pub fn run(o: &Opts, stamp: &str) -> Result<u8, String> {
             say(format!("would remove the larry block '{}' from {} (after a backup)", o.target, o.sshd_config.display()));
         } else {
             let b = ssh::remove_applied(&sshd, &o.target, stamp)?;
-            say(format!("sshd_config: block removed and verified (backup: {}). Reload sshd to activate it.", b.map(|p| p.display().to_string()).unwrap_or_default()));
+            say(format!(
+                "sshd_config: block removed and verified (backup: {}). Reload sshd to activate it.",
+                b.map(|p| p.display().to_string()).unwrap_or_default()
+            ));
         }
     } else {
         say(format!("sshd_config has no larry block for '{}'", o.target));

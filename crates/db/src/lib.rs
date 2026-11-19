@@ -61,8 +61,7 @@ pub struct MysqlCli {
 
 impl MysqlCli {
     pub fn new(defaults_file: PathBuf) -> Result<Self, String> {
-        let dump_tool = larry_transport::find_tool(&["mysqldump", "mariadb-dump"])
-            .ok_or("neither mysqldump nor mariadb-dump found in PATH")?;
+        let dump_tool = larry_transport::find_tool(&["mysqldump", "mariadb-dump"]).ok_or("neither mysqldump nor mariadb-dump found in PATH")?;
         Ok(MysqlCli { defaults_file, dump_tool })
     }
 
@@ -79,7 +78,11 @@ fn explain(what: &str, out: &larry_transport::Output) -> String {
 impl Sql for MysqlCli {
     fn query(&self, sql: &str) -> Result<String, String> {
         let out = self.base("mysql").args(["-N", "-B"]).stdin_data(sql).run().map_err(|e| e.to_string())?;
-        if out.success() { Ok(out.stdout) } else { Err(explain("mysql", &out)) }
+        if out.success() {
+            Ok(out.stdout)
+        } else {
+            Err(explain("mysql", &out))
+        }
     }
 
     fn dump(&self, db: &str, mode: DumpMode, out: &mut (dyn Write + Send)) -> Result<(), String> {
@@ -89,12 +92,20 @@ impl Sql for MysqlCli {
             .args(["--routines", "--triggers", "--events", "--databases", db])
             .stream(None, Some(out))
             .map_err(|e| e.to_string())?;
-        if r.success() { Ok(()) } else { Err(explain(&self.dump_tool, &r)) }
+        if r.success() {
+            Ok(())
+        } else {
+            Err(explain(&self.dump_tool, &r))
+        }
     }
 
     fn load(&self, input: &mut (dyn Read + Send)) -> Result<(), String> {
         let r = self.base("mysql").stream(Some(input), None).map_err(|e| e.to_string())?;
-        if r.success() { Ok(()) } else { Err(explain("mysql (import)", &r)) }
+        if r.success() {
+            Ok(())
+        } else {
+            Err(explain("mysql (import)", &r))
+        }
     }
 }
 

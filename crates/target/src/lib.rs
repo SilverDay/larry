@@ -4,12 +4,12 @@
 //! validate what came from the drop directory) and a small executor. The plan is a list of
 //! [`steps::Step`]s, so `--dry-run` prints exactly what a real run would do.
 
+pub mod appconfig;
+pub mod apply;
 pub mod manifest;
 pub mod perms;
 pub mod pool;
 pub mod provision;
-pub mod appconfig;
-pub mod apply;
 pub mod rewrite;
 pub mod steps;
 pub mod tls;

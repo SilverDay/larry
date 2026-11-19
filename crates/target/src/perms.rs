@@ -52,7 +52,16 @@ pub fn ownership_steps(o: &Ownership) -> Vec<Step> {
 
 /// `setpriv` access checks, reported as warnings.
 pub fn access_checks(o: &Ownership, pool_group: &str, probe: Option<&Path>) -> Vec<Step> {
-    let can = |user: &str, group: &str, flag: &str, path: &Path| Cmd::new("setpriv").args([format!("--reuid={user}"), format!("--regid={group}"), "--init-groups".into(), "test".into(), flag.into(), path.display().to_string()]);
+    let can = |user: &str, group: &str, flag: &str, path: &Path| {
+        Cmd::new("setpriv").args([
+            format!("--reuid={user}"),
+            format!("--regid={group}"),
+            "--init-groups".into(),
+            "test".into(),
+            flag.into(),
+            path.display().to_string(),
+        ])
+    };
     let mut v = vec![Step::Warn { desc: format!("PHP worker {} can traverse the docroot", o.pool_user), cmd: can(o.pool_user, pool_group, "-x", o.docroot) }];
     if let Some(p) = probe {
         v.push(Step::Warn { desc: format!("PHP worker {} can read {}", o.pool_user, p.display()), cmd: can(o.pool_user, pool_group, "-r", p) });
@@ -71,7 +80,14 @@ mod tests {
     #[test]
     fn commands_are_argument_lists_with_per_type_acls_and_pruning() {
         let prune = [PathBuf::from("/srv/vhosts/a/sub")];
-        let o = Ownership { vhost_root: Path::new("/srv/vhosts/a"), docroot: Path::new("/srv/vhosts/a/public"), pool_user: "php-a", web_group: "www-data", deploy_user: Some("deploy"), prune: &prune };
+        let o = Ownership {
+            vhost_root: Path::new("/srv/vhosts/a"),
+            docroot: Path::new("/srv/vhosts/a/public"),
+            pool_user: "php-a",
+            web_group: "www-data",
+            deploy_user: Some("deploy"),
+            prune: &prune,
+        };
         let s: Vec<String> = ownership_steps(&o).iter().map(|s| s.describe()).collect();
         assert!(s[0].contains("find /srv/vhosts/a '(' -path /srv/vhosts/a/sub ')' -prune -o -exec chown -h php-a:www-data '{}' +"));
         assert!(s.iter().any(|l| l.contains("-type d -exec chmod 0750")));

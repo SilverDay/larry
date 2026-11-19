@@ -1,0 +1,16 @@
+#!/bin/sh
+# usage: systemctl reload|enable --now|restart <unit>
+unit=""; for a in "$@"; do unit="$a"; done
+verb="$1"
+case "$unit" in
+  apache2)
+    if pgrep -x apache2 >/dev/null; then apache2ctl graceful; else apache2ctl start; fi ;;
+  php*-fpm)
+    v=${unit#php}; v=${v%-fpm}
+    if pgrep -f "php-fpm: master" >/dev/null; then
+      [ "$verb" = enable ] || pkill -USR2 -f "php-fpm: master"
+    else
+      mkdir -p /run/php; php-fpm$v --daemonize
+    fi ;;
+  *) echo "systemctl shim: $*" >&2; exit 0 ;;
+esac

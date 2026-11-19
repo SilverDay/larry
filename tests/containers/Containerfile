@@ -1,0 +1,17 @@
+# One image per target distro and database server; the scenario runs inside it as root, source and
+# target on the same machine (the drop directory is reached over a real sshd with the forced rrsync).
+ARG BASE=ubuntu:24.04
+FROM ${BASE}
+ARG DB=mariadb
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      apache2 php-fpm php-cli php-mysql openssh-server rsync acl util-linux curl ca-certificates procps \
+      ${DB}-server ${DB}-client 2>&1 | tail -3 \
+ && a2enmod rewrite ssl headers proxy_fcgi setenvif >/dev/null \
+ && rm -f /etc/apache2/sites-enabled/000-default.conf
+# There is no systemd in a container: map the few systemctl calls larry makes onto the daemons.
+COPY systemctl-shim /usr/local/bin/systemctl
+COPY scenario.sh /scenario.sh
+COPY larry /usr/local/bin/larry
+RUN chmod +x /usr/local/bin/systemctl /scenario.sh /usr/local/bin/larry
+CMD ["/scenario.sh"]

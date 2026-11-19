@@ -59,13 +59,7 @@ impl Env {
                     .args(["-N", "-B", "-e", "SHOW DATABASES"])
                     .run_checked()
                     .map_err(|e| format!("SHOW DATABASES failed: {e}"))?;
-                Some(
-                    out.stdout
-                        .split_whitespace()
-                        .filter(|d| !dbdetect::SYSTEM_DBS.contains(d))
-                        .map(String::from)
-                        .collect(),
-                )
+                Some(out.stdout.split_whitespace().filter(|d| !dbdetect::SYSTEM_DBS.contains(d)).map(String::from).collect())
             }
         };
         let hostname = fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default().trim().to_string();
@@ -150,12 +144,9 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
     // 2. which docroot, and whether the vhost is migratable at all
     for r in &mut raws {
         let rec = &mut r.rec;
-        let confs: Vec<&str> =
-            rec.conf_files.iter().filter_map(|c| Path::new(c).file_name()?.to_str()).collect();
+        let confs: Vec<&str> = rec.conf_files.iter().filter_map(|c| Path::new(c).file_name()?.to_str()).collect();
         let existing: Vec<&PathBuf> = r.candidates.iter().filter(|d| d.is_dir()).collect();
-        if env.hostnames.contains(&rec.domain)
-            || (!confs.is_empty() && confs.iter().all(|c| *c == "000-default.conf" || *c == "default-ssl.conf"))
-        {
+        if env.hostnames.contains(&rec.domain) || (!confs.is_empty() && confs.iter().all(|c| *c == "000-default.conf" || *c == "default-ssl.conf")) {
             rec.skip = Some("the server's own default vhost".into());
         } else if !larry_config::is_domain(&rec.domain) {
             rec.skip = Some("domain name not usable".into());
@@ -179,9 +170,12 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
                 rec.add(Level::Review, "docroot-name", format!("docroot directory name '{name}' is not usable"));
             } else {
                 if r.candidates.len() > 1 {
-                    let others: Vec<_> =
-                        r.candidates.iter().filter(|c| **c != root).map(|c| c.display().to_string()).collect();
-                    rec.add(Level::Info, "docroot-differs", format!("DocumentRoot differs between its vhost files; using {} and ignoring {}", root.display(), others.join(", ")));
+                    let others: Vec<_> = r.candidates.iter().filter(|c| **c != root).map(|c| c.display().to_string()).collect();
+                    rec.add(
+                        Level::Info,
+                        "docroot-differs",
+                        format!("DocumentRoot differs between its vhost files; using {} and ignoring {}", root.display(), others.join(", ")),
+                    );
                 }
                 rec.docroot_exists = true;
                 rec.docroot_name = Some(name);
@@ -195,9 +189,7 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
     //    and the parent's copy excludes it. Candidate docroots of ALL vhosts count.
     let all_roots: Vec<(String, PathBuf, PathBuf)> = raws
         .iter()
-        .flat_map(|r| {
-            r.candidates.iter().map(|d| (r.rec.domain.clone(), d.clone(), d.parent().map(Path::to_path_buf).unwrap_or_default()))
-        })
+        .flat_map(|r| r.candidates.iter().map(|d| (r.rec.domain.clone(), d.clone(), d.parent().map(Path::to_path_buf).unwrap_or_default())))
         .collect();
     let mut nested_pairs: Vec<(String, String, PathBuf, bool)> = vec![]; // (parent, child, path, vdir_inside)
     for r in &raws {
@@ -263,8 +255,14 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
         let found = dbdetect::find_candidates(&vroot, &prune, opts.max_depth);
         rec.db = dbdetect::resolve(&found, env.databases.as_ref());
         match rec.db.status {
-            DbStatus::Unresolved => rec.add(Level::Review, "db-unresolved", format!("{}. Held back: decide with `plan --db {}=NAME` (or an empty NAME for none)", rec.db.note, rec.domain)),
-            DbStatus::Resolved if !rec.db.verified => rec.add(Level::Review, "db-unverified", format!("db '{}' not checked against the server", rec.db.name.clone().unwrap_or_default())),
+            DbStatus::Unresolved => rec.add(
+                Level::Review,
+                "db-unresolved",
+                format!("{}. Held back: decide with `plan --db {}=NAME` (or an empty NAME for none)", rec.db.note, rec.domain),
+            ),
+            DbStatus::Resolved if !rec.db.verified => {
+                rec.add(Level::Review, "db-unverified", format!("db '{}' not checked against the server", rec.db.name.clone().unwrap_or_default()))
+            }
             _ => {}
         }
 
@@ -281,10 +279,21 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
         }
         let orphans: Vec<String> = sc.gids.iter().filter(|g| !known_gids.contains(g)).map(|g| g.to_string()).collect();
         if !orphans.is_empty() {
-            rec.add(Level::Info, "orphaned-gids", format!("files owned by GID(s) without a group here: {} (ownership is reset on the target)", orphans.join(", ")));
+            rec.add(
+                Level::Info,
+                "orphaned-gids",
+                format!("files owned by GID(s) without a group here: {} (ownership is reset on the target)", orphans.join(", ")),
+            );
         }
         if !rec.php_settings.is_empty() {
-            rec.add(Level::Review, "php-settings", format!("{} php_value/php_flag/php_admin_* setting(s) return HTTP 500 under PHP-FPM; proposed as pool settings, review them in sites.toml", rec.php_settings.len()));
+            rec.add(
+                Level::Review,
+                "php-settings",
+                format!(
+                    "{} php_value/php_flag/php_admin_* setting(s) return HTTP 500 under PHP-FPM; proposed as pool settings, review them in sites.toml",
+                    rec.php_settings.len()
+                ),
+            );
         }
         if !rec.old_path_hits.is_empty() {
             let total: u64 = rec.old_path_hits.iter().map(|h| h.count).sum();
@@ -292,7 +301,11 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
         }
         let cron: Vec<&String> = cron_lines.iter().filter(|l| l.contains(&old)).take(5).collect();
         if !cron.is_empty() {
-            rec.add(Level::Review, "cron", format!("cron entries point into the site; v1 does not move cron jobs: {}", cron.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" | ")));
+            rec.add(
+                Level::Review,
+                "cron",
+                format!("cron entries point into the site; v1 does not move cron jobs: {}", cron.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" | ")),
+            );
         }
         rec.add(Level::Info, "size", format!("{} files, {} bytes", rec.file_count, rec.size_bytes));
     }
@@ -310,12 +323,26 @@ pub fn build_inventory(env: &Env, opts: &Options) -> Vec<Record> {
     }
     for (root, doms) in by_root.iter().filter(|(_, d)| d.len() > 1) {
         for r in raws.iter_mut().filter(|r| doms.contains(&r.rec.domain)) {
-            r.rec.add(Level::Review, "shared-docroot", format!("shares docroot {root} with {}: each would become its own copy; one vhost with ServerAlias is probably what you want", doms.iter().filter(|d| **d != r.rec.domain).cloned().collect::<Vec<_>>().join(", ")));
+            r.rec.add(
+                Level::Review,
+                "shared-docroot",
+                format!(
+                    "shares docroot {root} with {}: each would become its own copy; one vhost with ServerAlias is probably what you want",
+                    doms.iter().filter(|d| **d != r.rec.domain).cloned().collect::<Vec<_>>().join(", ")
+                ),
+            );
         }
     }
     for (db, doms) in by_db.iter().filter(|(_, d)| d.len() > 1) {
         for r in raws.iter_mut().filter(|r| doms.contains(&r.rec.domain)) {
-            r.rec.add(Level::Info, "shared-db", format!("database {db} is shared with {}; it is dumped and imported once per site", doms.iter().filter(|d| **d != r.rec.domain).cloned().collect::<Vec<_>>().join(", ")));
+            r.rec.add(
+                Level::Info,
+                "shared-db",
+                format!(
+                    "database {db} is shared with {}; it is dumped and imported once per site",
+                    doms.iter().filter(|d| **d != r.rec.domain).cloned().collect::<Vec<_>>().join(", ")
+                ),
+            );
         }
     }
 
@@ -350,13 +377,7 @@ fn read_cron(files: &[PathBuf]) -> Vec<String> {
 /// Write `inventory.jsonl` atomically (`.part`, then rename), mode 0600.
 pub fn write_inventory(path: &Path, records: &[Record]) -> Result<(), String> {
     let part = path.with_extension("jsonl.part");
-    let mut f = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&part)
-        .map_err(|e| format!("{}: {e}", part.display()))?;
+    let mut f = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&part).map_err(|e| format!("{}: {e}", part.display()))?;
     for r in records {
         let line = serde_json::to_string(r).map_err(|e| e.to_string())?;
         writeln!(f, "{line}").map_err(|e| format!("{}: {e}", part.display()))?;
@@ -378,14 +399,24 @@ pub fn read_inventory(path: &Path) -> Result<Vec<Record>, String> {
 
 /// 0 clean, 2 review needed.
 pub fn exit_code(records: &[Record]) -> i32 {
-    if records.iter().any(|r| r.needs_review()) { 2 } else { 0 }
+    if records.iter().any(|r| r.needs_review()) {
+        2
+    } else {
+        0
+    }
 }
 
 pub fn report(records: &[Record]) -> String {
     let mut out = String::new();
     let ready: Vec<_> = records.iter().filter(|r| r.skip.is_none()).collect();
     let held: Vec<_> = ready.iter().filter(|r| r.db.status == DbStatus::Unresolved).collect();
-    out += &format!("Discovered {} vhosts: {} to move ({} held back for a database decision), {} skipped\n", records.len(), ready.len(), held.len(), records.len() - ready.len());
+    out += &format!(
+        "Discovered {} vhosts: {} to move ({} held back for a database decision), {} skipped\n",
+        records.len(),
+        ready.len(),
+        held.len(),
+        records.len() - ready.len()
+    );
 
     let review: Vec<_> = records.iter().flat_map(|r| r.findings.iter().filter(|f| f.level == Level::Review).map(move |f| (&r.domain, f))).collect();
     if !review.is_empty() {
@@ -529,8 +560,15 @@ mod tests {
         fs::create_dir_all(&a).unwrap();
         let b = t.join("b/public");
         fs::create_dir_all(&b).unwrap();
-        write(&t.join("two.conf"), &format!("<VirtualHost *:80>\n DocumentRoot {}\n</VirtualHost>\n<VirtualHost *:443>\n DocumentRoot {}\n</VirtualHost>\n", a.display(), b.display()));
-        s += &format!("         port 80 namevhost two.example.org ({}:1)\n         port 443 namevhost two.example.org ({}:4)\n", t.join("two.conf").display(), t.join("two.conf").display());
+        write(
+            &t.join("two.conf"),
+            &format!("<VirtualHost *:80>\n DocumentRoot {}\n</VirtualHost>\n<VirtualHost *:443>\n DocumentRoot {}\n</VirtualHost>\n", a.display(), b.display()),
+        );
+        s += &format!(
+            "         port 80 namevhost two.example.org ({}:1)\n         port 443 namevhost two.example.org ({}:4)\n",
+            t.join("two.conf").display(),
+            t.join("two.conf").display()
+        );
         let recs = build_inventory(&env(s, None, &t), &Options { vhost_base: "/srv/vhosts".into(), max_depth: 5 });
         for r in &recs {
             assert!(r.skip.is_some(), "{} should be held back", r.domain);

@@ -98,7 +98,11 @@ pub fn php_directives(text: &str) -> Vec<(String, String, String)> {
 fn clean_path(p: &str) -> String {
     let p = p.trim().trim_matches('"');
     let t = p.trim_end_matches('/');
-    if t.is_empty() { p.to_string() } else { t.to_string() }
+    if t.is_empty() {
+        p.to_string()
+    } else {
+        t.to_string()
+    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 
 use larry_db::{checks, dumpfile, import, MysqlCli};
 use larry_journal::{Entry, Journal, Outcome};
-use larry_target::{apply, appconfig, provision, steps};
+use larry_target::{appconfig, apply, provision, steps};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -153,7 +153,13 @@ pub fn provision(c: &Common) -> Result<u8, String> {
 
 fn finish(what: &str, t: &Tally) -> Result<u8, String> {
     println!("\n{what}: {} failed, {} warning(s)", t.failed, t.warned);
-    Ok(if t.failed > 0 { 1 } else if t.warned > 0 { 2 } else { 0 })
+    Ok(if t.failed > 0 {
+        1
+    } else if t.warned > 0 {
+        2
+    } else {
+        0
+    })
 }
 
 pub struct ApplyOpts {
@@ -191,7 +197,8 @@ pub fn apply(c: &Common, o: &ApplyOpts) -> Result<u8, String> {
             }
             Ok(())
         })();
-        let h = larry_journal::plan_hash(apply::read_manifest(&env, &d).ok().map(|m| serde_json::to_vec(&m).unwrap_or_default()).unwrap_or_default().as_slice());
+        let h =
+            larry_journal::plan_hash(apply::read_manifest(&env, &d).ok().map(|m| serde_json::to_vec(&m).unwrap_or_default()).unwrap_or_default().as_slice());
         record(&mut j, &d, "apply", &h, &r);
         if let Err(e) = r {
             tally.failed += 1;
@@ -225,7 +232,11 @@ fn apply_db(domain: &str, db: &str, dump: &Path, vhost_root: &Path, c: &Common, 
             rep.tables_in_dump
         ));
     } else {
-        log(format!("database '{db}' replaced: {} table(s){}", rep.tables_after.unwrap_or(0), rep.backup.as_ref().map(|b| format!("; previous copy in {}", b.display())).unwrap_or_default()));
+        log(format!(
+            "database '{db}' replaced: {} table(s){}",
+            rep.tables_after.unwrap_or(0),
+            rep.backup.as_ref().map(|b| format!("; previous copy in {}", b.display())).unwrap_or_default()
+        ));
     }
     for w in &rep.warnings {
         log(format!("WARN: {w}"));
@@ -236,11 +247,17 @@ fn apply_db(domain: &str, db: &str, dump: &Path, vhost_root: &Path, c: &Common, 
     // the app's own DB user, from the config it just received
     match appconfig::find(vhost_root, db) {
         None => log(format!("WARN: no supported app config names database '{db}' with credentials; create the app's database user by hand")),
-        Some(cr) if !appconfig::is_local_host(&cr.host) => log(format!("WARN: {} points at database host '{}'; no local account was created", cr.source, cr.host.clone().unwrap_or_default())),
-        Some(cr) if c.dry_run => log(format!("would ensure database user '{}'@'localhost' (credentials from {}) with rights on '{db}' only", cr.user, cr.source)),
+        Some(cr) if !appconfig::is_local_host(&cr.host) => {
+            log(format!("WARN: {} points at database host '{}'; no local account was created", cr.source, cr.host.clone().unwrap_or_default()))
+        }
+        Some(cr) if c.dry_run => {
+            log(format!("would ensure database user '{}'@'localhost' (credentials from {}) with rights on '{db}' only", cr.user, cr.source))
+        }
         Some(cr) => match checks::ensure_app_user(&sql, &cr.user, &cr.password, db)? {
             checks::UserOutcome::Created => log(format!("database user '{}'@'localhost' created (credentials from {})", cr.user, cr.source)),
-            checks::UserOutcome::Existing => log(format!("database user '{}'@'localhost' already existed; password left alone, rights on '{db}' re-applied", cr.user)),
+            checks::UserOutcome::Existing => {
+                log(format!("database user '{}'@'localhost' already existed; password left alone, rights on '{db}' re-applied", cr.user))
+            }
         },
     }
     Ok(())
@@ -278,7 +295,11 @@ mod tests {
         std::fs::create_dir_all(&d).unwrap();
         let p = d.join("x.db.sql.gz");
         let mut enc = flate2::write::GzEncoder::new(std::fs::File::create(&p).unwrap(), flate2::Compression::default());
-        std::io::Write::write_all(&mut enc, format!("{}\nUSE `other`;\n", larry_db::dumpfile::header_line("a.example.org", "other", "src", "2026-01-01T00:00:00Z")).as_bytes()).unwrap();
+        std::io::Write::write_all(
+            &mut enc,
+            format!("{}\nUSE `other`;\n", larry_db::dumpfile::header_line("a.example.org", "other", "src", "2026-01-01T00:00:00Z")).as_bytes(),
+        )
+        .unwrap();
         enc.finish().unwrap();
         larry_db::dumpfile::write_sidecar(&p).unwrap();
         assert!(db_precheck("a.example.org", "shop", &p).unwrap_err().contains("manifest says"));

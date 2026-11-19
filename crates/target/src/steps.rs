@@ -9,17 +9,39 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub enum Step {
     Note(String),
-    Mkdir { path: PathBuf, mode: u32 },
+    Mkdir {
+        path: PathBuf,
+        mode: u32,
+    },
     /// Write a file. An existing, different file is renamed with the timestamp, never overwritten.
     /// With `test`, the command runs on the result; if it fails the old file is put back and the step fails.
-    Write { path: PathBuf, content: String, mode: u32, test: Option<Cmd> },
-    Run { desc: String, cmd: Cmd },
+    Write {
+        path: PathBuf,
+        content: String,
+        mode: u32,
+        test: Option<Cmd>,
+    },
+    Run {
+        desc: String,
+        cmd: Cmd,
+    },
     /// Like `Run`, but a failure is only reported.
-    Warn { desc: String, cmd: Cmd },
+    Warn {
+        desc: String,
+        cmd: Cmd,
+    },
     /// Rewrite old absolute paths in PHP files below `root` (see `rewrite`); backups go to `backup_dir`.
-    Rewrite { root: PathBuf, pairs: Vec<(String, String)>, backup_dir: PathBuf },
+    Rewrite {
+        root: PathBuf,
+        pairs: Vec<(String, String)>,
+        backup_dir: PathBuf,
+    },
     /// Install a certificate lineage from the package into `letsencrypt` (skipped if it already exists).
-    Tls { name: String, from: PathBuf, letsencrypt: PathBuf },
+    Tls {
+        name: String,
+        from: PathBuf,
+        letsencrypt: PathBuf,
+    },
 }
 
 impl Step {
@@ -33,11 +55,9 @@ impl Step {
                 test.as_ref().map(|t| format!("; then {}", t.display())).unwrap_or_default()
             ),
             Step::Run { desc, cmd } | Step::Warn { desc, cmd } => format!("{desc}: {}", cmd.display()),
-            Step::Rewrite { root, pairs, .. } => format!(
-                "rewrite {} in PHP files below {}",
-                pairs.iter().map(|(o, n)| format!("{o} -> {n}")).collect::<Vec<_>>().join(", "),
-                root.display()
-            ),
+            Step::Rewrite { root, pairs, .. } => {
+                format!("rewrite {} in PHP files below {}", pairs.iter().map(|(o, n)| format!("{o} -> {n}")).collect::<Vec<_>>().join(", "), root.display())
+            }
             Step::Tls { name, letsencrypt, .. } => format!("install certificate '{name}' into {}", letsencrypt.display()),
         }
     }

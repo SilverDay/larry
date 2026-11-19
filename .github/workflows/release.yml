@@ -1,0 +1,52 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+  id-token: write   # keyless signing with sigstore
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-musl, runner: ubuntu-24.04 }
+          - { target: aarch64-unknown-linux-musl, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: scripts/package.sh ${{ matrix.target }} ${{ github.ref_name }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - uses: dtolnay/rust-toolchain@stable
+      - name: CycloneDX SBOM
+        run: |
+          cargo install cargo-cyclonedx --locked --version 0.5.7
+          cargo cyclonedx --format json --override-filename larry.cdx
+          mv crates/cli/larry.cdx.json dist/larry-${{ github.ref_name }}.cdx.json
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign (keyless); verify with `cosign verify-blob` against this repository's workflow identity
+        run: |
+          cd dist
+          for f in SHA256SUMS; do cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"; done
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

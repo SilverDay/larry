@@ -35,7 +35,15 @@ pub struct FakeSql {
 
 impl FakeSql {
     pub fn new(exists: bool, tables: u64) -> Self {
-        FakeSql { log: RefCell::new(vec![]), exists: Cell::new(exists), tables: Cell::new(tables), nontx: Cell::new(0), user_rows: Cell::new(0), fail_dump: false, loads_tables: 2 }
+        FakeSql {
+            log: RefCell::new(vec![]),
+            exists: Cell::new(exists),
+            tables: Cell::new(tables),
+            nontx: Cell::new(0),
+            user_rows: Cell::new(0),
+            fail_dump: false,
+            loads_tables: 2,
+        }
     }
     pub fn log(&self) -> Vec<String> {
         self.log.borrow().clone()

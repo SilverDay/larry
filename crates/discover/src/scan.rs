@@ -76,9 +76,5 @@ pub fn scan_site(root: &Path, docroot: &Path, excludes: &[PathBuf], needles: &[S
 
 /// GIDs defined in a group file (`/etc/group`); used to find orphaned GIDs on the source.
 pub fn known_gids(group_file: &Path) -> BTreeSet<u32> {
-    fs::read_to_string(group_file)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| l.split(':').nth(2)?.parse().ok())
-        .collect()
+    fs::read_to_string(group_file).unwrap_or_default().lines().filter_map(|l| l.split(':').nth(2)?.parse().ok()).collect()
 }

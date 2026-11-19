@@ -98,9 +98,7 @@ pub fn resolve(m: &Manifest, env: &Env, default_php: &str) -> Result<Resolved, S
         if socks.len() != 1 {
             return Err(format!("{}: expected one proxy:unix: PHP-FPM handler, found {}: {}", m.domain, socks.len(), socks.join(", ")));
         }
-        let dirs: Vec<PathBuf> = std::fs::read_dir(&env.php_etc)
-            .map(|rd| rd.flatten().map(|e| e.path().join("fpm/pool.d")).collect())
-            .unwrap_or_default();
+        let dirs: Vec<PathBuf> = std::fs::read_dir(&env.php_etc).map(|rd| rd.flatten().map(|e| e.path().join("fpm/pool.d")).collect()).unwrap_or_default();
         let refs: Vec<&Path> = dirs.iter().map(|p| p.as_path()).collect();
         let (file, u, g) = pool::find_pool_by_socket(&refs, &socks[0]).ok_or_else(|| format!("{}: no PHP-FPM pool listens on {}", m.domain, socks[0]))?;
         user = u;
@@ -141,7 +139,10 @@ pub fn plan_provision(m: &Manifest, env: &Env, r: &Resolved) -> Result<Vec<Step>
     }
     if let Some(u) = &env.deploy_user {
         let acl = format!("u:{u}:--x");
-        v.push(Step::Run { desc: format!("let {u} traverse the vhost directories"), cmd: Cmd::new("setfacl").args(["-m", &acl]).arg(&env.vhost_base).arg(&r.vhost_root) });
+        v.push(Step::Run {
+            desc: format!("let {u} traverse the vhost directories"),
+            cmd: Cmd::new("setfacl").args(["-m", &acl]).arg(&env.vhost_base).arg(&r.vhost_root),
+        });
     }
     // certificates
     for name in &m.tls {
@@ -162,7 +163,12 @@ pub fn plan_provision(m: &Manifest, env: &Env, r: &Resolved) -> Result<Vec<Step>
     if m.php {
         if let Some(path) = write_pool {
             let svc = format!("php{ver}-fpm");
-            v.push(Step::Write { path, content: pool::render(m, ver, &env.vhost_base.to_string_lossy()), mode: 0o644, test: Some(Cmd::new(format!("php-fpm{ver}")).arg("-t")) });
+            v.push(Step::Write {
+                path,
+                content: pool::render(m, ver, &env.vhost_base.to_string_lossy()),
+                mode: 0o644,
+                test: Some(Cmd::new(format!("php-fpm{ver}")).arg("-t")),
+            });
             v.push(Step::Run { desc: format!("start {svc}"), cmd: Cmd::new("systemctl").args(["enable", "--now", &svc]) });
             v.push(Step::Run { desc: format!("reload {svc}"), cmd: Cmd::new("systemctl").args(["reload", &svc]) });
         }
@@ -240,7 +246,8 @@ mod tests {
             format!("<VirtualHost *:80>\nDocumentRoot {}\nSetHandler \"proxy:unix:/run/php/legacy.sock|fcgi://localhost/\"\n</VirtualHost>", doc.display()),
         )
         .unwrap();
-        std::fs::write(e.php_etc.join("8.3/fpm/pool.d/legacy.conf"), "[legacy]\nuser = php-legacy\ngroup = php-legacy\nlisten = /run/php/legacy.sock\n").unwrap();
+        std::fs::write(e.php_etc.join("8.3/fpm/pool.d/legacy.conf"), "[legacy]\nuser = php-legacy\ngroup = php-legacy\nlisten = /run/php/legacy.sock\n")
+            .unwrap();
         let r = resolve(&m, &e, "8.3").unwrap();
         assert_eq!(r.pool_user, "php-legacy");
         assert!(r.adopted.as_ref().unwrap().pool_file.as_ref().unwrap().ends_with("legacy.conf"));

@@ -22,7 +22,9 @@ pub fn render(m: &Manifest, php_version: &str, vhost_base: &str) -> String {
         if m.php {
             s.push_str(&format!("\n    <FilesMatch \"\\.php$\">\n        SetHandler \"proxy:unix:{sock}|fcgi://localhost/\"\n    </FilesMatch>\n"));
         }
-        s.push_str(&format!("\n    <Directory {doc}>\n        Options -Indexes +FollowSymLinks\n        AllowOverride All\n        Require all granted\n    </Directory>\n"));
+        s.push_str(&format!(
+            "\n    <Directory {doc}>\n        Options -Indexes +FollowSymLinks\n        AllowOverride All\n        Require all granted\n    </Directory>\n"
+        ));
         s
     };
     let mut out = format!("# written by larry for {}\n", m.domain);

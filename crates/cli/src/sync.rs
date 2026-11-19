@@ -106,7 +106,11 @@ fn stage_tls(letsencrypt: &Path, names: &[String], dir: &Path) -> Result<Vec<Str
             Err(e) => problems.push(format!("certificate '{n}': {e}")),
         }
     }
-    if problems.is_empty() { Ok(ok) } else { Err(problems) }
+    if problems.is_empty() {
+        Ok(ok)
+    } else {
+        Err(problems)
+    }
 }
 
 fn hostname() -> String {
@@ -188,7 +192,10 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts) -> Result<u8, String> {
             let m = build_manifest(cfg, site, rec, tls_ok);
             if !step("manifest", &mut journal, &mut || {
                 if o.dry_run {
-                    say(&format!("would push manifest.json{}", if m.tls.is_empty() { String::new() } else { format!(" and certificate(s) {}", m.tls.join(", ")) }));
+                    say(&format!(
+                        "would push manifest.json{}",
+                        if m.tls.is_empty() { String::new() } else { format!(" and certificate(s) {}", m.tls.join(", ")) }
+                    ));
                     return Ok(());
                 }
                 std::fs::write(work.join("manifest.json"), serde_json::to_string_pretty(&m).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
@@ -202,7 +209,13 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts) -> Result<u8, String> {
                 for (src, name, excludes) in trees(rec) {
                     let sname = format!("files:{name}");
                     if !step(&sname, &mut journal, &mut || {
-                        let c = rsync_tree(&ssh_cfg, &target, &src, &format!("./{d}/{name}"), &TreeOpts { excludes: &excludes, delete: o.mirror, dry_run: o.dry_run })?;
+                        let c = rsync_tree(
+                            &ssh_cfg,
+                            &target,
+                            &src,
+                            &format!("./{d}/{name}"),
+                            &TreeOpts { excludes: &excludes, delete: o.mirror, dry_run: o.dry_run },
+                        )?;
                         if o.dry_run {
                             say(&format!("would run {}", c.display()));
                             return Ok(());
@@ -230,7 +243,9 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts) -> Result<u8, String> {
                         larry_transport::ensure_private_dir(&work)?;
                         let r = dump::dump_database(sql, d, db, &hostname(), &work, larry_db::now())?;
                         say(&format!("dumped '{db}' ({} bytes, {})", r.bytes, r.mode.flag()));
-                        if let Some(old) = rec.docroot.as_deref().filter(|old| Path::new(old) != Path::new(&format!("{}/{d}/{}", cfg.layout.vhost_base, site.docroot_name()))) {
+                        if let Some(old) =
+                            rec.docroot.as_deref().filter(|old| Path::new(old) != Path::new(&format!("{}/{d}/{}", cfg.layout.vhost_base, site.docroot_name())))
+                        {
                             let n = dumpfile::count_occurrences(&r.path, old)?;
                             if n > 0 {
                                 say(&format!("WARN: the dump mentions the old path {old} {n} time(s); database hits are report-only in v1"));
@@ -253,7 +268,13 @@ pub fn run(cfg: &MigrationConfig, dir: &Path, o: &Opts) -> Result<u8, String> {
         }
     }
     println!("\nsync{}: {failed} site(s) failed, {warned} warning(s)", if o.dry_run { " (dry run)" } else { "" });
-    Ok(if failed > 0 { 1 } else if warned > 0 { 2 } else { 0 })
+    Ok(if failed > 0 {
+        1
+    } else if warned > 0 {
+        2
+    } else {
+        0
+    })
 }
 
 #[cfg(test)]
@@ -291,7 +312,9 @@ mod tests {
             "version = 1\n[source]\ndb_defaults_file = \"/x\"\n[ssh]\nconfig_file = \"/c\"\nknown_hosts = \"/k\"\n[targets.web1]\nhost = \"h\"\nhost_key = \"SHA256:abc\"\ntransfer_user = \"migrate\"\nincoming_dir = \"/srv/in\"\ndefault = true\n",
         )
         .unwrap();
-        let sites = larry_config::SitesFile::parse("[[site]]\ndomain = \"shop.example.org\"\ndocroot = \"public\"\ndb = \"shop\"\nrewrite_paths = true\n", &cfg).unwrap();
+        let sites =
+            larry_config::SitesFile::parse("[[site]]\ndomain = \"shop.example.org\"\ndocroot = \"public\"\ndb = \"shop\"\nrewrite_paths = true\n", &cfg)
+                .unwrap();
         let m = build_manifest(&cfg, &sites.site[0], &rec(), vec![]);
         m.validate().unwrap();
         assert!(m.php && m.rewrite_paths && m.db.as_deref() == Some("shop"));

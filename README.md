@@ -29,3 +29,12 @@ ssh/rsync builders and streaming (`transport`), journal and plan hash (`journal`
 `cargo test --workspace`. Two integration tests start throwaway servers of their own
 (a private MariaDB with a socket only, a private sshd on localhost) and skip themselves when the
 software is not installed. They never touch other servers on the machine.
+
+## Testing
+
+- `cargo test --workspace`: unit tests, plus integration tests that start a private MariaDB, sshd (with `rrsync`) and Apache as the current user. Each skips itself when its software is missing. The sync-to-apply test runs `target apply` under `fakeroot`.
+- `tests/containers/run.sh`: the whole migration as real root in Debian 12, Ubuntu 22.04 and 24.04 with MariaDB, and Ubuntu 24.04 with MySQL (needs podman or docker). This is the only test of `useradd`, real chown, `systemctl` reloads and the PHP-FPM pool under its own user.
+
+## Release
+
+Tags `v*` build static musl binaries (x86_64, aarch64), a CycloneDX SBOM and `SHA256SUMS`, signed keyless with cosign (`cosign verify-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS` with this repository's workflow identity). CI runs fmt, clippy `-D warnings`, tests, `cargo deny` (advisories, licences, sources) and REUSE. Licence: EUPL-1.2 (`LICENSES/`, `REUSE.toml`).

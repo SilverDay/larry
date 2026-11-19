@@ -112,7 +112,10 @@ pub fn nested_trees(env: &Env, r: &Resolved, domain: &str) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(&env.apache_sites) else { return v };
     for e in rd.flatten() {
         let p = e.path();
-        if p.extension().is_none_or(|x| x != "conf") || e.file_name().to_string_lossy().starts_with(&format!("{domain}.")) || e.file_name().to_string_lossy().starts_with(&format!("{domain}-")) {
+        if p.extension().is_none_or(|x| x != "conf")
+            || e.file_name().to_string_lossy().starts_with(&format!("{domain}."))
+            || e.file_name().to_string_lossy().starts_with(&format!("{domain}-"))
+        {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&p) else { continue };
@@ -153,7 +156,10 @@ pub fn plan_apply(m: &Manifest, env: &Env, r: &Resolved, opts: &Options) -> Resu
     if !foreign.is_empty() {
         let msg = format!("{} holds files owned by another vhost's pool user: {}", r.vhost_root.display(), foreign.join(", "));
         if !opts.adopt {
-            return Err(format!("{msg}. Taking them over would break that vhost and expose its files to {}. Nothing changed; re-run with --adopt if they are stale.", r.pool_user));
+            return Err(format!(
+                "{msg}. Taking them over would break that vhost and expose its files to {}. Nothing changed; re-run with --adopt if they are stale.",
+                r.pool_user
+            ));
         }
         v.push(Step::Note(format!("WARN: {msg} (--adopt)")));
     }
@@ -190,7 +196,12 @@ pub fn plan_apply(m: &Manifest, env: &Env, r: &Resolved, opts: &Options) -> Resu
         v.push(Step::Note("no docroot in the package; nothing to copy".into()));
     }
     if is_real_dir(&pkg_extra) {
-        let ex = nested.iter().filter_map(|n| n.strip_prefix(&r.vhost_root).ok()).map(|p| format!("/{}", p.display())).chain([format!("/{}", r.docroot.file_name().unwrap().to_string_lossy())]).collect();
+        let ex = nested
+            .iter()
+            .filter_map(|n| n.strip_prefix(&r.vhost_root).ok())
+            .map(|p| format!("/{}", p.display()))
+            .chain([format!("/{}", r.docroot.file_name().unwrap().to_string_lossy())])
+            .collect();
         v.push(Step::Run { desc: "copy the rest of the vhost directory".into(), cmd: rs(&pkg_extra, &r.vhost_root, ex) });
     }
 
@@ -216,10 +227,18 @@ pub fn plan_apply(m: &Manifest, env: &Env, r: &Resolved, opts: &Options) -> Resu
     }
 
     // ownership, ACLs, checks
-    let o = Ownership { vhost_root: &r.vhost_root, docroot: &r.docroot, pool_user: &r.pool_user, web_group: &env.web_group, deploy_user: env.deploy_user.as_deref(), prune: &nested };
+    let o = Ownership {
+        vhost_root: &r.vhost_root,
+        docroot: &r.docroot,
+        pool_user: &r.pool_user,
+        web_group: &env.web_group,
+        deploy_user: env.deploy_user.as_deref(),
+        prune: &nested,
+    };
     v.extend(ownership_steps(&o));
     let probe = std::fs::read_dir(&pkg_doc).ok().and_then(|rd| {
-        let mut names: Vec<String> = rd.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        let mut names: Vec<String> =
+            rd.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect();
         names.sort();
         names.iter().find(|n| n.starts_with("index.")).or(names.first()).map(|n| r.docroot.join(n))
     });

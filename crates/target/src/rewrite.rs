@@ -53,7 +53,9 @@ pub fn rewrite(text: &str, pairs: &[(String, String)]) -> Rewritten {
         let mut hit = None;
         if i == 0 || !path_char(bytes[i - 1]) {
             for (old, new) in &pairs {
-                if bytes[i..].starts_with(old.as_bytes()) && bytes.get(i + old.len()).is_none_or(|c| !matches!(c, b'_' | b'-' | b'.') && !c.is_ascii_alphanumeric()) {
+                if bytes[i..].starts_with(old.as_bytes())
+                    && bytes.get(i + old.len()).is_none_or(|c| !matches!(c, b'_' | b'-' | b'.') && !c.is_ascii_alphanumeric())
+                {
                     hit = Some((old.len(), new));
                     break;
                 }
@@ -111,7 +113,9 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
         let p = e.path();
         match e.file_type() {
             Ok(t) if t.is_dir() => walk(&p, out),
-            Ok(t) if t.is_file() && p.extension().and_then(|x| x.to_str()).is_some_and(|x| PHP_EXTENSIONS.contains(&x.to_ascii_lowercase().as_str())) => out.push(p),
+            Ok(t) if t.is_file() && p.extension().and_then(|x| x.to_str()).is_some_and(|x| PHP_EXTENSIONS.contains(&x.to_ascii_lowercase().as_str())) => {
+                out.push(p)
+            }
             _ => {} // symlinks are never followed or written through
         }
     }
@@ -166,10 +170,7 @@ mod tests {
     use super::*;
 
     fn p() -> Vec<(String, String)> {
-        vec![
-            ("/var/www/shop".into(), "/srv/vhosts/shop.example.org".into()),
-            ("/var/www/shop/httpdocs".into(), "/srv/vhosts/shop.example.org/public".into()),
-        ]
+        vec![("/var/www/shop".into(), "/srv/vhosts/shop.example.org".into()), ("/var/www/shop/httpdocs".into(), "/srv/vhosts/shop.example.org/public".into())]
     }
 
     #[test]
