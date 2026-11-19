@@ -82,7 +82,7 @@ fn sites(c: &Common) -> Result<Vec<String>, String> {
     Ok(c.only.clone())
 }
 
-fn need_root(dry_run: bool) -> Result<(), String> {
+pub fn need_root(dry_run: bool) -> Result<(), String> {
     if dry_run {
         return Ok(());
     }

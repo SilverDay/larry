@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand};
+mod cleanup;
+mod cutover;
 mod init;
 mod preflight;
 mod sync;
@@ -63,8 +65,40 @@ enum Command {
         /// Only these domains
         domains: Vec<String>,
     },
-    Cutover,
-    Cleanup,
+    /// On the source: optional 503 freeze, final sync, then (with --check-only) check each site on the target
+    Cutover {
+        /// Answer 503 on the source for the moved sites before the final sync (opt-in)
+        #[arg(long)]
+        freeze_source: bool,
+        /// Remove the maintenance page again
+        #[arg(long)]
+        unfreeze: bool,
+        /// Only check each site on the target with curl --resolve (after `larry target apply`)
+        #[arg(long)]
+        check_only: bool,
+        #[arg(long)]
+        mirror: bool,
+        #[arg(long)]
+        dry_run: bool,
+        domains: Vec<String>,
+    },
+    /// On a target, as root: remove the sshd block, lock the transfer user, archive the drop directory, check renewal
+    Cleanup {
+        /// Name the block was installed under (`larry target sshd --target`)
+        #[arg(long)]
+        target: String,
+        #[arg(long, default_value = "migrate")]
+        user: String,
+        #[arg(long, default_value = "/etc/ssh/sshd_config")]
+        sshd_config: PathBuf,
+        #[arg(long, default_value = "/srv/migration-incoming")]
+        incoming: PathBuf,
+        /// Do not run `certbot renew --dry-run`
+        #[arg(long)]
+        no_certbot: bool,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Commands that run on a target server, as root, by an admin
     Target {
         #[command(subcommand)]
@@ -226,6 +260,15 @@ fn run(cli: &Cli) -> Result<u8, String> {
             let both = !*files && !*db;
             sync::run(&cfg, &dir_of(&cli.config), &sync::Opts { files: *files || both, db: *db || both, mirror: *mirror, dry_run: *dry_run, resume: *resume, only: domains.clone() })
         }
+        Command::Cutover { freeze_source, unfreeze, check_only, mirror, dry_run, domains } => {
+            let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
+            let o = cutover::Opts { freeze_source: *freeze_source, unfreeze: *unfreeze, check_only: *check_only, mirror: *mirror, dry_run: *dry_run, only: domains.clone() };
+            cutover::run(&cfg, &dir_of(&cli.config), &o, &cutover::Apache::debian())
+        }
+        Command::Cleanup { target, user, sshd_config, incoming, no_certbot, dry_run } => {
+            target::need_root(*dry_run)?;
+            cleanup::run(&cleanup::Opts { target: target.clone(), user: user.clone(), sshd_config: sshd_config.clone(), incoming: incoming.clone(), certbot: !*no_certbot, dry_run: *dry_run }, &larry_db::stamp(larry_db::now()))
+        }
         Command::Provision { t } => target::provision(&t.common()),
         Command::Target { action: TargetAction::Apply { t, adopt, mirror, db_defaults_file } } => {
             target::apply(&t.common(), &target::ApplyOpts { adopt: *adopt, mirror: *mirror, db_defaults_file: db_defaults_file.clone() })
@@ -276,6 +319,5 @@ fn run(cli: &Cli) -> Result<u8, String> {
             }
             Ok(code)
         }
-        _ => Err("not implemented yet: see docs/spec.md".into()),
     }
 }

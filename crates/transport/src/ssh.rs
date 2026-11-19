@@ -262,6 +262,29 @@ pub fn apply_block(sshd: &Sshd, target: &str, user: &str, source_ip: &str, stamp
     Ok(backup)
 }
 
+/// `cleanup`: back up sshd_config, remove exactly the marked block, run `sshd -t`; any failure
+/// restores the backup. `None` means there was no block. Reloading sshd stays the admin's step.
+pub fn remove_applied(sshd: &Sshd, target: &str, stamp: &str) -> Result<Option<PathBuf>, String> {
+    let original = std::fs::read_to_string(&sshd.config).map_err(|e| format!("{}: {e}", sshd.config.display()))?;
+    let (updated, removed) = remove_block(&original, target)?;
+    if !removed {
+        return Ok(None);
+    }
+    let mut backup = sshd.config.as_os_str().to_owned();
+    backup.push(format!(".larry-{stamp}.bak"));
+    let backup = PathBuf::from(backup);
+    if backup.exists() {
+        return Err(format!("{} already exists: not overwriting a backup", backup.display()));
+    }
+    std::fs::copy(&sshd.config, &backup).map_err(|e| format!("backup {}: {e}", backup.display()))?;
+    std::fs::write(&sshd.config, updated).map_err(|e| format!("{}: {e}", sshd.config.display()))?;
+    if let Err(e) = sshd.test() {
+        let _ = std::fs::copy(&backup, &sshd.config);
+        return Err(format!("{e}; sshd_config restored from {}", backup.display()));
+    }
+    Ok(Some(backup))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,9 +396,11 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&broken.config).unwrap(), before);
 
         // cleanup: block removed, original restored
-        let (clean, _) = remove_block(&std::fs::read_to_string(&cfg).unwrap(), "web1").unwrap();
-        std::fs::write(&cfg, clean).unwrap();
+        let with_block = std::fs::read_to_string(&cfg).unwrap();
+        let backup = remove_applied(&sshd, "web1", "20261119-130000").unwrap().unwrap();
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), with_block, "the backup holds the block, for rollback");
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), base);
+        assert_eq!(remove_applied(&sshd, "web1", "20261119-130001").unwrap(), None, "nothing left to remove");
         assert!(sshd.denied_users("migrate", "203.0.113.9").unwrap().is_empty());
         std::fs::remove_dir_all(&d).unwrap();
     }
