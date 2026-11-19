@@ -11,7 +11,7 @@ The scripts it replaces are kept in [reference/](reference/) as the behavioural 
 | `init` | done (wizard, host-key pinning, ssh config, sshd/authorized_keys snippets) |
 | `discover` | done (vhosts, nested roots, databases, PHP settings, old paths, cron, non-InnoDB tables, DEFINER accounts, how the site sends mail) |
 | `plan` | done (`--interactive` not yet; use `--db DOMAIN=NAME`) |
-| `preflight` / `target preflight` | partly: tools, secret files, pinned keys, DB access, reachability, PHP-FPM versions, free space. Collation and name/ownership conflict checks to come |
+| `preflight` / `target preflight` | done (tools, secrets, host keys, database access, reachability, PHP-FPM versions, free space; the source hands the plan's facts to each target, where name and ownership conflicts, collations and existing databases are checked) |
 | `target sshd` | done (print, or `--apply` with backup, `sshd -t` and effective-config check) |
 | `sync` | done (files, certificates, manifest, database dump; `--mirror`, `--resume`, `--dry-run`) |
 | `provision` | done (pool user and file, vhost, directories, certificates, adoption of existing vhosts; needs root, `--dry-run` without) |
