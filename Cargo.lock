@@ -292,6 +292,13 @@ dependencies = [
 [[package]]
 name = "larry-target"
 version = "0.1.0"
+dependencies = [
+ "larry-config",
+ "larry-transport",
+ "regex",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "larry-transport"
