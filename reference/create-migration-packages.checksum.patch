@@ -1,0 +1,13 @@
+--- a/create-migration-packages.sh
++++ b/create-migration-packages.sh
+@@ -180,7 +180,9 @@
+   # 4. Combine into single archive + checksum
+   local final_pkg="${STAGING_DIR}/${domain}.pkg.tar.gz"
+   tar czf "$final_pkg" -C "$STAGING_DIR" "$domain"
+-  sha256sum "$final_pkg" > "${final_pkg}.sha256"
++  # Record the bare file name, not the staging path: the remote check below
++  # and deploy-migration-package.sh both verify from a different directory.
++  (cd "$STAGING_DIR" && sha256sum "$(basename "$final_pkg")") > "${final_pkg}.sha256"
+   log "PACKAGED: $domain -> $final_pkg ($(du -h "$final_pkg" | cut -f1))"
+ 
+   # 5. Transfer
