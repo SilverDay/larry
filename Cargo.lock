@@ -232,11 +232,15 @@ name = "larry"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "flate2",
  "larry-config",
  "larry-db",
  "larry-discover",
+ "larry-journal",
  "larry-plan",
+ "larry-target",
  "larry-transport",
+ "serde_json",
 ]
 
 [[package]]

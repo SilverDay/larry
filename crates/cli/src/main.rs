@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 mod init;
 mod preflight;
+mod sync;
+mod target;
 
 use larry_config::MigrationConfig;
 use std::path::{Path, PathBuf};
@@ -37,8 +39,30 @@ enum Command {
     },
     /// Check tools, secret files, pinned host keys, database access and reachability
     Preflight,
-    Provision,
-    Sync,
+    /// On a target, as root: pool user, pool file, Apache vhost, directories, certificates (or adopt an existing vhost)
+    Provision {
+        #[command(flatten)]
+        t: TargetArgs,
+    },
+    /// On the source: push files, database dumps, certificates and manifests into the target's drop directory
+    Sync {
+        /// Push the files (and certificates and manifest); with --db also the database
+        #[arg(long)]
+        files: bool,
+        /// Dump and push the database; with --files both
+        #[arg(long)]
+        db: bool,
+        /// Let removed source files be removed from the drop directory (the sites change only through `target apply --mirror`)
+        #[arg(long)]
+        mirror: bool,
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip steps already done under the same sites.toml
+        #[arg(long)]
+        resume: bool,
+        /// Only these domains
+        domains: Vec<String>,
+    },
     Cutover,
     Cleanup,
     /// Commands that run on a target server, as root, by an admin
@@ -53,8 +77,60 @@ enum Command {
     },
 }
 
+/// Where a target keeps things; the defaults are the spec's fixed layout.
+#[derive(clap::Args, Clone)]
+struct TargetArgs {
+    /// Domains to handle (default: every package in the drop directory)
+    domains: Vec<String>,
+    #[arg(long, default_value = "/srv/migration-incoming")]
+    incoming: PathBuf,
+    #[arg(long, default_value = "/srv/vhosts")]
+    vhost_base: PathBuf,
+    #[arg(long, default_value = "www-data")]
+    web_group: String,
+    /// User that gets deploy ACLs on each docroot
+    #[arg(long)]
+    deploy_user: Option<String>,
+    #[arg(long, default_value = "/var/backups/larry")]
+    backup_dir: PathBuf,
+    #[arg(long, default_value = "/run/lock")]
+    lock_dir: PathBuf,
+    /// Print exactly what would be done; change nothing
+    #[arg(long)]
+    dry_run: bool,
+}
+
+impl TargetArgs {
+    fn common(&self) -> target::Common {
+        target::Common {
+            incoming: self.incoming.clone(),
+            vhost_base: self.vhost_base.clone(),
+            web_group: self.web_group.clone(),
+            deploy_user: self.deploy_user.clone(),
+            backup_dir: self.backup_dir.clone(),
+            lock_dir: self.lock_dir.clone(),
+            dry_run: self.dry_run,
+            only: self.domains.clone(),
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum TargetAction {
+    /// Copy what arrived in the drop directory into the sites: snapshot, files, path rewriting, ownership, ACLs, database
+    Apply {
+        #[command(flatten)]
+        t: TargetArgs,
+        /// Take over files owned by another site's pool user (warn instead of refuse)
+        #[arg(long)]
+        adopt: bool,
+        /// Remove files that are gone on the source (they move to a timestamped backup directory)
+        #[arg(long)]
+        mirror: bool,
+        /// MySQL defaults file of the target's admin account
+        #[arg(long, default_value = "/root/larry-db.cnf")]
+        db_defaults_file: PathBuf,
+    },
     /// Check tools, PHP-FPM versions and free space on this target
     Preflight {
         /// PHP-FPM versions the planned sites need, e.g. 8.3 (repeatable)
@@ -144,6 +220,15 @@ fn run(cli: &Cli) -> Result<u8, String> {
             let backup = larry_transport::ssh::apply_block(&sshd, target, user, source_ip, &larry_db::stamp(larry_db::now()))?;
             println!("sshd_config updated and verified (backup: {}). Reload sshd to activate it.", backup.display());
             Ok(0)
+        }
+        Command::Sync { files, db, mirror, dry_run, resume, domains } => {
+            let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;
+            let both = !*files && !*db;
+            sync::run(&cfg, &dir_of(&cli.config), &sync::Opts { files: *files || both, db: *db || both, mirror: *mirror, dry_run: *dry_run, resume: *resume, only: domains.clone() })
+        }
+        Command::Provision { t } => target::provision(&t.common()),
+        Command::Target { action: TargetAction::Apply { t, adopt, mirror, db_defaults_file } } => {
+            target::apply(&t.common(), &target::ApplyOpts { adopt: *adopt, mirror: *mirror, db_defaults_file: db_defaults_file.clone() })
         }
         Command::Config { action: ConfigAction::Check } => {
             let cfg = MigrationConfig::load(&cli.config).map_err(|e| e.to_string())?;

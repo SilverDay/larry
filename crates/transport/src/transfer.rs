@@ -26,13 +26,44 @@ pub fn rsync_push(ssh_config: &str, target: &str, sources: &[&Path], dest: &str)
     if sources.is_empty() {
         return Err("nothing to send".into());
     }
-    let mut c = Cmd::new("rsync").args(["-a", "--partial", "-e"]).arg(format!("ssh -F {ssh_config}"));
+    let mut c = Cmd::new("rsync").args(["-a", "--partial", "--mkpath", "-e"]).arg(format!("ssh -F {ssh_config}"));
     for s in sources {
         let s = s.to_string_lossy();
         no_space("file", &s)?;
         c = c.arg(s.as_ref());
     }
     Ok(c.arg(format!("{}:{dest}", ssh::alias(target))))
+}
+
+/// Options for [`rsync_tree`].
+#[derive(Debug, Default, Clone)]
+pub struct TreeOpts<'a> {
+    /// Patterns anchored at the transfer root, e.g. `/blog`.
+    pub excludes: &'a [String],
+    /// Remove files on the receiving side that are gone here (drop directory only; the real
+    /// sites change only through `target apply --mirror`).
+    pub delete: bool,
+    pub dry_run: bool,
+}
+
+/// Push a directory tree: `rsync -a src/ target:dest/`, creating missing parent directories.
+/// Owner and group are not sent (the receiving account is not root), devices and specials are skipped.
+pub fn rsync_tree(ssh_config: &str, target: &str, src: &Path, dest: &str, o: &TreeOpts) -> Result<Cmd, String> {
+    no_space("ssh config path", ssh_config)?;
+    no_space("destination", dest)?;
+    let s = src.to_string_lossy();
+    no_space("source directory", &s)?;
+    let mut c = Cmd::new("rsync").args(["-a", "--partial", "--mkpath", "--no-owner", "--no-group", "--no-devices", "--no-specials", "-e"]).arg(format!("ssh -F {ssh_config}"));
+    if o.delete {
+        c = c.arg("--delete");
+    }
+    if o.dry_run {
+        c = c.arg("--dry-run");
+    }
+    for e in o.excludes {
+        c = c.arg(format!("--exclude={e}"));
+    }
+    Ok(c.arg(format!("{}/", s.trim_end_matches('/'))).arg(format!("{}:{}/", ssh::alias(target), dest.trim_end_matches('/'))))
 }
 
 /// Reachability probe: a dry-run rsync of an empty directory into the drop directory. It works through
@@ -122,7 +153,7 @@ mod tests {
         let c = rsync_push("/root/larry/ssh_config", "web1", &[Path::new("/var/tmp/larry/a.db.sql.gz"), Path::new("/var/tmp/larry/a.db.sql.gz.sha256")], "./").unwrap();
         assert_eq!(
             c.display(),
-            "rsync -a --partial -e 'ssh -F /root/larry/ssh_config' /var/tmp/larry/a.db.sql.gz /var/tmp/larry/a.db.sql.gz.sha256 larry-web1:./"
+            "rsync -a --partial --mkpath -e 'ssh -F /root/larry/ssh_config' /var/tmp/larry/a.db.sql.gz /var/tmp/larry/a.db.sql.gz.sha256 larry-web1:./"
         );
         assert_eq!(ssh_cmd("/c", "web1", &["true"]).unwrap().display(), "ssh -F /c larry-web1 true");
         assert!(rsync_push("/root/my config", "web1", &[Path::new("/a")], "./").is_err());

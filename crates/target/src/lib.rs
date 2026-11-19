@@ -8,6 +8,7 @@ pub mod manifest;
 pub mod perms;
 pub mod pool;
 pub mod provision;
+pub mod appconfig;
 pub mod apply;
 pub mod rewrite;
 pub mod steps;

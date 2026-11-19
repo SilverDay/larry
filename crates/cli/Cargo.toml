@@ -12,3 +12,9 @@ larry-discover = { path = "../discover" }
 larry-plan = { path = "../plan" }
 larry-db = { path = "../db" }
 larry-transport = { path = "../transport" }
+larry-target = { path = "../target" }
+larry-journal = { path = "../journal" }
+serde_json.workspace = true
+
+[dev-dependencies]
+flate2 = "1"
