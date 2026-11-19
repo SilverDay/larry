@@ -64,7 +64,7 @@ install -m 0755 larry-v0.1.0-x86_64-unknown-linux-musl/larry /usr/local/bin/larr
 ```
 
 The binary is static; it needs no Rust or libraries. Releases carry a CycloneDX SBOM.
-To build from source: `cargo build --release --locked` (Rust 1.85 or newer).
+To build from source: `cargo build --release --locked` (Rust 1.89 or newer).
 
 ### Requirements
 
