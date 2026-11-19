@@ -7,7 +7,7 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
 #[derive(Debug)]
@@ -126,6 +126,67 @@ impl Cmd {
         })
     }
 
+    /// Run with data streamed through: `input` (if any) is copied to the child's stdin and the
+    /// child's stdout (if `output` is given) is copied to `output`, without holding it in memory.
+    /// Used for dumps (`mysqldump` to a gzip file) and imports (a gzip file into `mysql`).
+    /// stderr is captured; the returned `stdout` is empty when `output` is given.
+    pub fn stream(
+        &self,
+        input: Option<&mut (dyn Read + Send)>,
+        output: Option<&mut (dyn Write + Send)>,
+    ) -> Result<Output, CmdError> {
+        let program = self.program.to_string_lossy().into_owned();
+        let spawn_err = |source| CmdError::Spawn { program: program.clone(), source };
+        let mut child = Command::new(&self.program)
+            .args(&self.args)
+            .stdin(if input.is_some() || matches!(self.stdin, Stdin::Data(_)) { Stdio::piped() } else { Stdio::null() })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(spawn_err)?;
+        let mut stdin = child.stdin.take();
+        let mut stdout = child.stdout.take().expect("piped stdout");
+        let mut stderr = child.stderr.take().expect("piped stderr");
+        let data = match &self.stdin {
+            Stdin::Data(d) => Some(d.clone()),
+            Stdin::Null => None,
+        };
+        let mut out_buf = Vec::new();
+        let mut err_buf = Vec::new();
+        let mut copy_err: Option<std::io::Error> = None;
+        std::thread::scope(|sc| {
+            let err_t = sc.spawn(|| {
+                let _ = stderr.read_to_end(&mut err_buf);
+            });
+            let out_t = sc.spawn(|| match output {
+                Some(w) => std::io::copy(&mut stdout, w).err(),
+                None => {
+                    let _ = stdout.read_to_end(&mut out_buf);
+                    None
+                }
+            });
+            // A child that exits early closes the pipe; that is reported through its status.
+            if let Some(mut w) = stdin.take() {
+                if let Some(r) = input {
+                    let _ = std::io::copy(r, &mut w);
+                } else if let Some(d) = &data {
+                    let _ = w.write_all(d);
+                }
+            }
+            copy_err = out_t.join().ok().flatten();
+            let _ = err_t.join();
+        });
+        let status = child.wait().map_err(spawn_err)?;
+        if let Some(e) = copy_err {
+            return Err(CmdError::Spawn { program, source: e });
+        }
+        Ok(Output {
+            code: status.code(),
+            stdout: String::from_utf8_lossy(&out_buf).into_owned(),
+            stderr: String::from_utf8_lossy(&err_buf).into_owned(),
+        })
+    }
+
     /// Run and fail on any non-zero exit.
     pub fn run_checked(&self) -> Result<Output, CmdError> {
         let out = self.run()?;
@@ -139,6 +200,40 @@ impl Cmd {
             })
         }
     }
+}
+
+/// First of `names` found in PATH (e.g. `mysqldump` or `mariadb-dump`).
+pub fn find_tool(names: &[&str]) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    for n in names {
+        for dir in std::env::split_paths(&path) {
+            let p = dir.join(n);
+            if p.is_file() {
+                return Some((*n).to_string());
+            }
+        }
+    }
+    None
+}
+
+/// A private working directory: created 0700 if missing, refused if it is a symlink or
+/// not owned by the caller (staging dirs usually live in a shared place such as /var/tmp).
+pub fn ensure_private_dir(dir: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    let d = dir.display();
+    match std::fs::symlink_metadata(dir) {
+        Ok(m) if m.file_type().is_symlink() => return Err(format!("{d} is a symlink: refusing")),
+        Ok(m) if !m.is_dir() => return Err(format!("{d} is not a directory")),
+        Ok(m) => {
+            // /proc/self is owned by the user the process runs as.
+            let me = std::fs::metadata("/proc/self").map(|x| x.uid());
+            if me.map_err(|e| e.to_string())? != m.uid() {
+                return Err(format!("{d} is not owned by you: refusing"));
+            }
+        }
+        Err(_) => std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(|e| format!("{d}: {e}"))?,
+    }
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| format!("{d}: {e}"))
 }
 
 fn quote(s: &str) -> String {
@@ -185,6 +280,35 @@ mod tests {
             e => panic!("unexpected {e}"),
         }
         assert!(matches!(Cmd::new("no-such-tool-xyz").run(), Err(CmdError::Spawn { .. })));
+    }
+
+    #[test]
+    fn streaming_copies_both_ways_without_buffering_in_the_result() {
+        let mut input: &[u8] = &vec![b'y'; 2_000_000];
+        let mut out: Vec<u8> = Vec::new();
+        let r = Cmd::new("cat").stream(Some(&mut input), Some(&mut out)).unwrap();
+        assert_eq!(r.code, Some(0));
+        assert_eq!(out.len(), 2_000_000);
+        assert!(r.stdout.is_empty());
+        let mut out2: Vec<u8> = Vec::new();
+        let r = Cmd::new("sh").args(["-c", "echo data; echo oops >&2; exit 4"]).stream(None, Some(&mut out2)).unwrap();
+        assert_eq!((r.code, out2.as_slice(), r.stderr.trim()), (Some(4), &b"data\n"[..], "oops"));
+    }
+
+    #[test]
+    fn private_dir_rules() {
+        let base = std::env::temp_dir().join(format!("larry-priv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let d = base.join("stage");
+        ensure_private_dir(&d).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(&d).unwrap().permissions().mode() & 0o777, 0o700);
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&d, &link).unwrap();
+        assert!(ensure_private_dir(&link).is_err());
+        assert!(find_tool(&["no-such-tool-xyz", "sh"]).as_deref() == Some("sh"));
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
