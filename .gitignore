@@ -2,3 +2,4 @@
 /state/
 inventory.jsonl
 *.part
+dist/
